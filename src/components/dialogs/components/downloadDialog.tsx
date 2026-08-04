@@ -13,6 +13,7 @@ import PersistStatus from "@/utils/persistStatus";
 import { useI18N } from "@/core/i18n";
 import { ApkUpdateModule, onApkUpdateEvent } from "@/native/apkUpdate";
 import Toast from "@/utils/toast";
+import { Log } from "@/utils/log";
 
 interface IDownloadDialogProps {
     version: string;
@@ -62,57 +63,78 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
 
     /** 直接下载并安装 */
     const handleDownloadAndInstall = async (url: string) => {
-        if (!ApkUpdateModule.isSupported()) {
-            // 不支持内置下载，回退到浏览器
-            openUrl(url);
-            Clipboard.setString(url);
-            return;
-        }
-
         PersistStatus.set("app.skipVersion", undefined);
-        setDownloading(true);
-        setProgress(0);
 
-        const downloadId = await ApkUpdateModule.downloadAndInstall(url);
-        if (downloadId === -1) {
-            setDownloading(false);
-            Toast.warn("下载启动失败，请检查网络后重试");
-            return;
-        }
-
-        // 下载超时检测：30秒内进度仍为0则提示网络问题
-        let stalledCount = 0;
-        let lastProgress = -1;
-
-        // 轮询进度
-        timerRef.current = setInterval(async () => {
-            const p = await ApkUpdateModule.getDownloadProgress();
-            if (p >= 0) {
-                setProgress(p);
+        try {
+            if (!ApkUpdateModule.isSupported()) {
+                openUrl(url);
+                Clipboard.setString(url);
+                return;
             }
-            if (p >= 100) {
-                if (timerRef.current) {
-                    clearInterval(timerRef.current);
-                    timerRef.current = null;
-                }
-            }
-            // 检测下载是否卡住
-            if (p === lastProgress) {
-                stalledCount++;
-                if (stalledCount >= 60) {
-                    // 30秒无进度（60 * 500ms）
-                    if (timerRef.current) {
-                        clearInterval(timerRef.current);
-                        timerRef.current = null;
+
+            setDownloading(true);
+            setProgress(0);
+            Log.d("开始下载 APK: " + url);
+
+            const downloadId = await ApkUpdateModule.downloadAndInstall(url);
+            Log.d("下载已启动, downloadId=" + downloadId);
+
+            let stalledCount = 0;
+            let lastProgress = -1;
+            let failedReported = false;
+
+            timerRef.current = setInterval(async () => {
+                try {
+                    const p = await ApkUpdateModule.getDownloadProgress();
+                    
+                    if (p === -1) {
+                        if (!failedReported) {
+                            failedReported = true;
+                            setDownloading(false);
+                            if (timerRef.current) {
+                                clearInterval(timerRef.current);
+                                timerRef.current = null;
+                            }
+                            const err = await ApkUpdateModule.getLastError();
+                            Toast.warn("下载失败: " + (err || "未知错误"));
+                        }
+                        return;
                     }
-                    setDownloading(false);
-                    Toast.warn("下载超时，GitHub 可能无法访问，请尝试备用链接");
-                }
-            } else {
-                stalledCount = 0;
-                lastProgress = p;
-            }
-        }, 500);
+
+                    if (p >= 0) {
+                        setProgress(p);
+                    }
+
+                    if (p >= 100) {
+                        if (timerRef.current) {
+                            clearInterval(timerRef.current);
+                            timerRef.current = null;
+                        }
+                        return;
+                    }
+
+                    if (p === lastProgress) {
+                        stalledCount++;
+                        if (stalledCount >= 60) {
+                            if (timerRef.current) {
+                                clearInterval(timerRef.current);
+                                timerRef.current = null;
+                            }
+                            setDownloading(false);
+                            Toast.warn("下载速度过慢，请尝试备用链接");
+                        }
+                    } else {
+                        stalledCount = 0;
+                        lastProgress = p;
+                    }
+                } catch (_) {}
+            }, 500);
+        } catch (e: any) {
+            setDownloading(false);
+            const msg = e?.message || "未知错误";
+            Log.e("下载启动失败: " + msg);
+            Toast.warn("下载启动失败: " + msg);
+        }
     };
 
     return (
