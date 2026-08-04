@@ -54,7 +54,7 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                     clearInterval(timerRef.current);
                     timerRef.current = null;
                 }
-                Toast.warn("安装失败: " + event.message);
+                Toast.warn("更新失败: " + event.message);
             }
         });
         return unsubscribe;
@@ -76,9 +76,13 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
         const downloadId = await ApkUpdateModule.downloadAndInstall(url);
         if (downloadId === -1) {
             setDownloading(false);
-            Toast.warn("下载失败，请重试");
+            Toast.warn("下载启动失败，请检查网络后重试");
             return;
         }
+
+        // 下载超时检测：30秒内进度仍为0则提示网络问题
+        let stalledCount = 0;
+        let lastProgress = -1;
 
         // 轮询进度
         timerRef.current = setInterval(async () => {
@@ -91,6 +95,22 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                     clearInterval(timerRef.current);
                     timerRef.current = null;
                 }
+            }
+            // 检测下载是否卡住
+            if (p === lastProgress) {
+                stalledCount++;
+                if (stalledCount >= 60) {
+                    // 30秒无进度（60 * 500ms）
+                    if (timerRef.current) {
+                        clearInterval(timerRef.current);
+                        timerRef.current = null;
+                    }
+                    setDownloading(false);
+                    Toast.warn("下载超时，GitHub 可能无法访问，请尝试备用链接");
+                }
+            } else {
+                stalledCount = 0;
+                lastProgress = p;
             }
         }, 500);
     };

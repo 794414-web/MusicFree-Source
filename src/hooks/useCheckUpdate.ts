@@ -10,7 +10,14 @@ export const checkUpdateAndShowResult = (
     showToast = false,
     checkSkip = false,
 ) => {
-    checkUpdate().then(updateInfo => {
+    checkUpdate().then(result => {
+        const { updateInfo, error } = result ?? {};
+        if (error) {
+            if (showToast) {
+                Toast.warn("检查更新失败: " + error);
+            }
+            return;
+        }
         if (updateInfo?.needUpdate) {
             const { data } = updateInfo;
             const skipVersion = PersistStatus.get("app.skipVersion");

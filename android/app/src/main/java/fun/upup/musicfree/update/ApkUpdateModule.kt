@@ -54,7 +54,39 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
             val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) ?: -1
             if (id == downloadId && downloadId != -1L) {
                 Log.d(TAG, "下载完成, downloadId=$id")
-                installApk()
+                // 检查下载是否真正成功
+                val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                val query = DownloadManager.Query().setFilterById(downloadId)
+                var downloadSuccess = false
+                var failReason = "下载失败"
+                dm.query(query)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
+                        if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                            downloadSuccess = true
+                        } else {
+                            val reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                            failReason = when (reason) {
+                                DownloadManager.ERROR_CANNOT_RESUME -> "无法恢复下载"
+                                DownloadManager.ERROR_DEVICE_NOT_FOUND -> "存储设备不可用"
+                                DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "文件已存在"
+                                DownloadManager.ERROR_FILE_ERROR -> "文件读写错误"
+                                DownloadManager.ERROR_HTTP_DATA_ERROR -> "HTTP 数据错误"
+                                DownloadManager.ERROR_INSUFFICIENT_SPACE -> "存储空间不足"
+                                DownloadManager.ERROR_TOO_MANY_REDIRECTS -> "重定向过多"
+                                DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "HTTP 状态码异常"
+                                DownloadManager.ERROR_UNKNOWN -> "未知下载错误"
+                                else -> "下载失败 (code=$reason)"
+                            }
+                        }
+                    }
+                }
+                if (downloadSuccess) {
+                    installApk()
+                } else {
+                    Log.e(TAG, "下载失败: $failReason")
+                    emitEvent("error", failReason)
+                }
                 try {
                     reactContext.unregisterReceiver(this)
                     downloadReceiverRegistered = false
