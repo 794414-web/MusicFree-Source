@@ -87,5 +87,8 @@ scripts/
 dist/
 web-build/
 
+# 教程文件夹（不上传）
+教程/
+
 # APK files (uploaded as GitHub Releases instead)
 *.apk
