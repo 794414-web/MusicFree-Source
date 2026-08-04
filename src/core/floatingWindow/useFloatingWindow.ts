@@ -84,7 +84,7 @@ export function useFloatingWindow(effectiveEnabled: boolean) {
     };
   }, [enabled]);
 
-  // 开关悬浮窗
+  // 开关悬浮窗（仅依赖 enabled，不依赖 currentMusic 等，避免切歌时重建窗口回到中心）
   const showFloatingWindow = useCallback(async () => {
     if (Platform.OS !== 'android') {
       return;
@@ -117,10 +117,7 @@ export function useFloatingWindow(effectiveEnabled: boolean) {
     }
     // 初始化封面显示
     await FloatingWindowModule.setCoverVisible(!!showCover);
-    if (showCover && currentMusic?.artwork) {
-      await FloatingWindowModule.setCover(currentMusic.artwork);
-    }
-  }, [width, height, bgColor, textColor, fontSize, showCover, currentMusic]);
+  }, [width, height, bgColor, textColor, fontSize, showCover]);
 
   const hideFloatingWindow = useCallback(async () => {
     if (Platform.OS !== 'android') {
@@ -130,7 +127,7 @@ export function useFloatingWindow(effectiveEnabled: boolean) {
     shownRef.current = false;
   }, []);
 
-  // 监听 enabled 变化
+  // 监听 enabled 变化（仅当 enabled 状态改变时才 show/hide）
   useEffect(() => {
     if (Platform.OS !== 'android') {
       return;
@@ -147,7 +144,8 @@ export function useFloatingWindow(effectiveEnabled: boolean) {
         shownRef.current = false;
       }
     };
-  }, [enabled, showFloatingWindow, hideFloatingWindow]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);
 
   // 同步播放状态
   useEffect(() => {

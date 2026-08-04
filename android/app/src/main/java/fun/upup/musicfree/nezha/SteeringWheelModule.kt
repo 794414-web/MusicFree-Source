@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.media.AudioManager
 import android.os.Build
+import android.util.Log
 import android.view.KeyEvent
 import com.facebook.react.bridge.Arguments
 import com.facebook.react.bridge.Promise
@@ -36,17 +37,26 @@ class SteeringWheelModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     companion object {
+        private const val TAG = "SteeringWheel"
+
         private val ACTIONS = listOf(
             "hozon.intent.action.SWC_MEDIA_KEY",
             "hozon.intent.action.SWC_KEY",
             "android.intent.action.MEDIA_BUTTON",
+            "com.hozonauto.swc.MEDIA_KEY",
+            "com.hozonauto.swc.KEY",
         )
 
+        /** 哪吒/车机可能使用的 int 型 extra key */
         private val EXTRA_KEYS = listOf(
             "KeyEvent.keyCode",
             "keyCode",
             "KEY_CODE",
             "extra_keycode",
+            "key_code",
+            "extra",
+            "hozon_keycode",
+            "swc_keycode",
         )
 
         private const val EVENT_NAME = "steeringWheelMediaKey"
@@ -57,23 +67,24 @@ class SteeringWheelModule(private val reactContext: ReactApplicationContext) :
     private val swcReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             val action = intent?.action ?: return
+            Log.d(TAG, "收到广播: action=$action, extras=${logExtras(intent)}")
 
-            // 尝试多种 extra key 获取按键码
+            // 尝试多种方式获取按键码
             val keyCode = parseKeyCode(intent)
+            Log.d(TAG, "解析到 keyCode=$keyCode")
+
             if (keyCode != KeyEvent.KEYCODE_UNKNOWN) {
                 // 音量键在原生层直接处理，确保响应及时
                 when (keyCode) {
-                    KeyEvent.KEYCODE_VOLUME_UP -> {
-                        adjustVolumeNative(1)
-                    }
-                    KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                        adjustVolumeNative(-1)
-                    }
+                    KeyEvent.KEYCODE_VOLUME_UP -> adjustVolumeNative(1)
+                    KeyEvent.KEYCODE_VOLUME_DOWN -> adjustVolumeNative(-1)
                     10004 -> adjustVolumeNative(1)
                     10005 -> adjustVolumeNative(-1)
                 }
-                // 仍然通知 JS 层（用于同步状态等）
+                // 通知 JS 层
                 notifyMediaKey(keyCode)
+            } else {
+                Log.w(TAG, "无法解析按键码，广播内容: ${logExtras(intent)}")
             }
         }
     }
@@ -87,6 +98,7 @@ class SteeringWheelModule(private val reactContext: ReactApplicationContext) :
     fun startListening(promise: Promise) {
         try {
             if (receiverRegistered) {
+                Log.d(TAG, "广播接收器已注册，跳过")
                 promise.resolve(true)
                 return
             }
@@ -94,6 +106,7 @@ class SteeringWheelModule(private val reactContext: ReactApplicationContext) :
             val filter = IntentFilter().apply {
                 for (action in ACTIONS) {
                     addAction(action)
+                    Log.d(TAG, "注册监听 action: $action")
                 }
             }
 
@@ -104,8 +117,10 @@ class SteeringWheelModule(private val reactContext: ReactApplicationContext) :
                 reactContext.registerReceiver(swcReceiver, filter)
             }
             receiverRegistered = true
+            Log.d(TAG, "广播接收器注册成功，共 ${ACTIONS.size} 个 action")
             promise.resolve(true)
         } catch (e: Exception) {
+            Log.e(TAG, "广播接收器注册失败", e)
             promise.resolve(false)
         }
     }
@@ -167,16 +182,71 @@ class SteeringWheelModule(private val reactContext: ReactApplicationContext) :
     }
 
     /**
-     * 尝试从多个 extra key 中解析按键码
+     * 尝试从多个来源解析按键码：
+     * 1. Intent.EXTRA_KEY_EVENT（标准 Android MEDIA_BUTTON 方式，包含 KeyEvent 对象）
+     * 2. 各种 int 型 extra key（哪吒/车机自定义）
+     * 3. String 型 extra key 再转 int
      */
     private fun parseKeyCode(intent: Intent): Int {
+        // 1. 标准 Android MEDIA_BUTTON：通过 EXTRA_KEY_EVENT 传递 KeyEvent 对象
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val keyEvent = intent.getParcelableExtra(
+                Intent.EXTRA_KEY_EVENT, KeyEvent::class.java
+            )
+            if (keyEvent != null) {
+                Log.d(TAG, "从 EXTRA_KEY_EVENT 获取到 keyCode=${keyEvent.keyCode}")
+                return keyEvent.keyCode
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val keyEvent = intent.getParcelableExtra<KeyEvent>(Intent.EXTRA_KEY_EVENT)
+            if (keyEvent != null) {
+                Log.d(TAG, "从 EXTRA_KEY_EVENT 获取到 keyCode=${keyEvent.keyCode}")
+                return keyEvent.keyCode
+            }
+        }
+
+        // 2. int 型 extra key
         for (key in EXTRA_KEYS) {
             val value = intent.getIntExtra(key, KeyEvent.KEYCODE_UNKNOWN)
             if (value != KeyEvent.KEYCODE_UNKNOWN) {
+                Log.d(TAG, "从 int extra '$key' 获取到 keyCode=$value")
                 return value
             }
         }
+
+        // 3. String 型 extra key 再转 int
+        for (key in EXTRA_KEYS) {
+            val strValue = intent.getStringExtra(key)
+            if (!strValue.isNullOrEmpty()) {
+                try {
+                    val value = strValue.toInt()
+                    if (value != KeyEvent.KEYCODE_UNKNOWN) {
+                        Log.d(TAG, "从 string extra '$key' 获取到 keyCode=$value")
+                        return value
+                    }
+                } catch (e: NumberFormatException) {
+                    // 不是数字，跳过
+                }
+            }
+        }
+
         return KeyEvent.KEYCODE_UNKNOWN
+    }
+
+    /**
+     * 打印 Intent 所有 extra（用于调试）
+     */
+    private fun logExtras(intent: Intent): String {
+        val sb = StringBuilder()
+        val extras = intent.extras
+        if (extras != null) {
+            for (key in extras.keySet()) {
+                val value = extras.get(key)
+                sb.append("$key=$value ")
+            }
+        }
+        return if (sb.isEmpty()) "(无 extras)" else sb.toString().trim()
     }
 
     /**
