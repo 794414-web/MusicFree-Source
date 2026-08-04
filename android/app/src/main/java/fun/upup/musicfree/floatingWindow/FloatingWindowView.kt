@@ -196,10 +196,10 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
             windowManager =
                 reactContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-            // 获取屏幕尺寸
+            // 获取真实屏幕尺寸（包含状态栏/导航栏区域）
             val outMetrics = DisplayMetrics()
             @Suppress("DEPRECATION")
-            windowManager?.defaultDisplay?.getMetrics(outMetrics)
+            windowManager?.defaultDisplay?.getRealMetrics(outMetrics)
             screenWidth = outMetrics.widthPixels
             screenHeight = outMetrics.heightPixels
 

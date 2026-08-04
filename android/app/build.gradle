@@ -114,7 +114,7 @@ static def getVersion() {
 // }
 
 def appVersion = getVersion()
-def appVersionCode = 8001
+def appVersionCode = 8002
 
 
 android {

@@ -21,6 +21,7 @@ import `fun`.upup.musicfree.floatingWindow.FloatingWindowPackage
 import `fun`.upup.musicfree.nezha.NezhaThemePackage
 import `fun`.upup.musicfree.nezha.SteeringWheelPackage
 import `fun`.upup.musicfree.nezha.NezhaMultiDisplayPackage
+import `fun`.upup.musicfree.update.ApkUpdatePackage
 
 class MainApplication : Application(), ReactApplication {
 
@@ -37,6 +38,7 @@ class MainApplication : Application(), ReactApplication {
               add(NezhaThemePackage())
               add(SteeringWheelPackage())
               add(NezhaMultiDisplayPackage())
+              add(ApkUpdatePackage())
             }
 
         override fun getJSMainModuleName(): String = "index"
