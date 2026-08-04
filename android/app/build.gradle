@@ -114,7 +114,7 @@ static def getVersion() {
 // }
 
 def appVersion = getVersion()
-def appVersionCode = 8004
+def appVersionCode = 8005
 
 
 android {
@@ -151,7 +151,7 @@ android {
                 reset()
                 enable true
                 universalApk true
-                include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+                include ""
             }
     }
 
