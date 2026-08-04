@@ -998,7 +998,7 @@ function FloatingWindowSetting() {
                     thumbTintColor={colors.primary}
                     minimumValue={200}
                     step={10}
-                    maximumValue={500}
+                    maximumValue={900}
                     value={width ?? 280}
                     onSlidingComplete={val => {
                         Config.setConfig("basic.floatingWindowWidth", val);
@@ -1014,7 +1014,7 @@ function FloatingWindowSetting() {
                     thumbTintColor={colors.primary}
                     minimumValue={0}
                     step={10}
-                    maximumValue={400}
+                    maximumValue={900}
                     value={height ?? 0}
                     onSlidingComplete={val => {
                         Config.setConfig("basic.floatingWindowHeight", val);
@@ -1030,7 +1030,7 @@ function FloatingWindowSetting() {
                     thumbTintColor={colors.primary}
                     minimumValue={10}
                     step={1}
-                    maximumValue={24}
+                    maximumValue={48}
                     value={fontSize ?? 14}
                     onSlidingComplete={val => {
                         Config.setConfig("basic.floatingWindowFontSize", val);

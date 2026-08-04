@@ -27,7 +27,8 @@ function getResultComponent(
         ? memo(
             () => {
                 const searchResults = useAtomValue(searchResultsAtom);
-                const pluginSearchResult = searchResults[tab][pluginHash];
+                const tabResults = searchResults[tab] ?? {};
+                const pluginSearchResult = tabResults[pluginHash];
                 const pluginSearchResultRef = useRef(pluginSearchResult);
 
                 useEffect(() => {

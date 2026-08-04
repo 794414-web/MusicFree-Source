@@ -99,14 +99,28 @@ export default function SimpleInput(props: ISimpleInputProps) {
                             <TouchableOpacity
                                 style={[
                                     styles.pasteBtn,
-                                    { backgroundColor: colors.primary },
+                                    { backgroundColor: colors.placeholder },
                                 ]}
                                 onPress={handlePaste}>
                                 <ThemeText
                                     fontWeight="medium"
-                                    fontColor="white"
                                     fontSize="subTitle">
                                     {t("common.paste")}
+                                </ThemeText>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[
+                                    styles.confirmBtn,
+                                    { backgroundColor: colors.primary },
+                                ]}
+                                onPress={() => {
+                                    onOk(input, hidePanel);
+                                }}>
+                                <ThemeText
+                                    fontWeight="medium"
+                                    fontColor="white"
+                                    fontSize="subTitle">
+                                    {t("common.confirm")}
                                 </ThemeText>
                             </TouchableOpacity>
                         </View>
@@ -203,6 +217,14 @@ const styles = StyleSheet.create({
         marginRight: rpx(16),
     },
     pasteBtn: {
+        height: rpx(88),
+        paddingHorizontal: rpx(24),
+        borderRadius: rpx(12),
+        justifyContent: "center",
+        alignItems: "center",
+        marginRight: rpx(12),
+    },
+    confirmBtn: {
         height: rpx(88),
         paddingHorizontal: rpx(28),
         borderRadius: rpx(12),

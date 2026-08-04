@@ -498,8 +498,8 @@ class PluginManager implements IPluginManager, IInjectable {
 
     /**
      * 获取所有支持搜索功能的已启用插件
-     * @param supportedSearchType - 可选的搜索媒体类型过滤器
-     * @returns 可搜索的插件实例数组
+     * 注意：这里不过滤 Error 状态的插件，以便音源 tab 仍然可以显示
+     * 实际搜索时会在 useSearch.ts 中跳过 Error 状态的插件
      */
     getSearchablePlugins(supportedSearchType?: ICommon.SupportMediaType) {
         return this.getPlugins().filter(
@@ -531,8 +531,7 @@ class PluginManager implements IPluginManager, IInjectable {
 
     /**
      * 获取所有实现特定功能的已启用插件
-     * @param ability - 要检查的方法/功能名称
-     * @returns 具有指定功能的插件实例数组
+     * 注意：不过滤 Error 状态，避免隐藏可用的音源
      */
     getPluginsWithAbility(ability: keyof IPlugin.IPluginInstanceMethods) {
         return this.getPlugins().filter(

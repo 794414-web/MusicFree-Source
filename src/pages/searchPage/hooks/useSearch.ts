@@ -4,7 +4,7 @@ import { produce } from "immer";
 import { getDefaultStore, useAtom, useSetAtom } from "jotai";
 import { useCallback, useRef } from "react";
 import { PageStatus, pageStatusAtom, searchResultsAtom } from "../store/atoms";
-import PluginManager, { Plugin } from "@/core/pluginManager";
+import PluginManager, { Plugin, PluginState } from "@/core/pluginManager";
 
 export default function useSearch() {
     const setPageStatus = useSetAtom(pageStatusAtom);
@@ -39,6 +39,34 @@ export default function useSearch() {
                 setPageStatus(PageStatus.NO_PLUGIN);
                 return;
             }
+
+            // 计数：有多少个插件真正执行了搜索（未被提前跳过）
+            let activeSearchCount = 0;
+            let finishedCount = 0;
+            const ensureResultStatus = () => {
+                finishedCount++;
+                if (finishedCount >= activeSearchCount) {
+                    // 所有活动搜索都结束了，确保切换到 RESULT
+                    const currentPageStatus =
+                        getDefaultStore().get(pageStatusAtom);
+                    if (currentPageStatus !== PageStatus.EDITING &&
+                        currentPageStatus !== PageStatus.RESULT) {
+                        setPageStatus(PageStatus.RESULT);
+                    }
+                }
+            };
+
+            // 防止卡死的兜底：8秒后无论如何都切换到 RESULT
+            const safetyTimer = setTimeout(() => {
+                const currentPageStatus =
+                    getDefaultStore().get(pageStatusAtom);
+                if (currentPageStatus !== PageStatus.EDITING &&
+                    currentPageStatus !== PageStatus.RESULT) {
+                    devLog("warn", "搜索超时，强制切换到结果页");
+                    setPageStatus(PageStatus.RESULT);
+                }
+            }, 8000);
+
             // 使用选中插件搜素
             plugins.forEach(async plugin => {
                 const _platform = plugin.instance.platform;
@@ -46,13 +74,46 @@ export default function useSearch() {
                 if (!_platform || !_hash) {
                     // 插件无效，此时直接进入结果页
                     setPageStatus(PageStatus.RESULT);
+                    clearTimeout(safetyTimer);
                     return;
                 }
 
                 const searchType =
                     type ?? plugin.instance.defaultSearchType ?? "music";
+
+                // 插件解析失败时跳过搜索，避免卡死
+                if (plugin.state === PluginState.Error || !plugin.methods?.search) {
+                    setSearchResults(
+                        produce(draft => {
+                            let prevMediaResult: any = draft[searchType];
+                            if (!prevMediaResult) {
+                                (draft as any)[searchType] = {};
+                                prevMediaResult = (draft as any)[searchType];
+                            }
+                            prevMediaResult[_hash] = {
+                                state: RequestStateCode.ERROR,
+                                data: [],
+                                query: query ?? "",
+                                page: 1,
+                            };
+                        }),
+                    );
+                    // 确保切换到结果页，避免卡在搜索中
+                    const currentPageStatus =
+                        getDefaultStore().get(pageStatusAtom);
+                    if (currentPageStatus !== PageStatus.EDITING) {
+                        setPageStatus(PageStatus.RESULT);
+                    }
+                    clearTimeout(safetyTimer);
+                    return;
+                }
+
+                // 这个插件会真正执行搜索
+                activeSearchCount++;
+
                 // 上一份搜索结果
-                const prevPluginResult = searchResults[searchType][plugin.hash];
+                const prevSearchTypeResults = searchResults[searchType] ?? {};
+                const prevPluginResult = prevSearchTypeResults[plugin.hash];
                 /** 上一份搜索还没返回/已经结束 */
                 if (
                     (prevPluginResult?.state ===
@@ -176,8 +237,20 @@ export default function useSearch() {
                             return draft;
                         }),
                     );
+                } finally {
+                    ensureResultStatus();
+                    clearTimeout(safetyTimer);
                 }
             });
+            // 如果没有任何插件真正执行搜索（全部提前跳过），确保切换到 RESULT
+            if (activeSearchCount === 0) {
+                const currentPageStatus =
+                    getDefaultStore().get(pageStatusAtom);
+                if (currentPageStatus !== PageStatus.EDITING) {
+                    setPageStatus(PageStatus.RESULT);
+                }
+                clearTimeout(safetyTimer);
+            }
         },
         [searchResults],
     );

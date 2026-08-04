@@ -1,6 +1,7 @@
 package `fun`.upup.musicfree.floatingWindow
 
 import android.content.Context
+import android.content.Intent
 import android.content.res.ColorStateList
 import android.graphics.BitmapFactory
 import android.graphics.Color
@@ -8,6 +9,7 @@ import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.util.DisplayMetrics
+import android.util.Log
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.MotionEvent
@@ -40,14 +42,20 @@ import java.net.URL
  */
 class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(reactContext) {
 
+    companion object {
+        private const val TAG = "FloatingWindowView"
+    }
+
     private var windowManager: WindowManager? = null
     private var layoutParams: WindowManager.LayoutParams? = null
 
     // 封面图
     private val coverImage: ImageView = ImageView(context).apply {
-        scaleType = ImageView.ScaleType.CENTER_CROP
+        scaleType = ImageView.ScaleType.CENTER_INSIDE
         visibility = View.GONE
         setBackgroundColor(Color.TRANSPARENT)
+        // 让图片可以按比例缩放显示
+        adjustViewBounds = true
     }
 
     // 容器
@@ -134,13 +142,15 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
         controlBar.addView(nextBtn, linearParams(dpToPx(8f).toInt()))
 
         // 添加封面（默认隐藏）
+        // 高度自适应，按比例缩放显示完整封面
         rootLayout.addView(
             coverImage,
             LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT,
-                dpToPx(140f).toInt()
+                LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
                 bottomMargin = dpToPx(8f).toInt()
+                gravity = Gravity.CENTER
             }
         )
         rootLayout.addView(
@@ -351,6 +361,24 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                 val bitmap = loadBitmap(url)
                 withContext(Dispatchers.Main) {
                     if (bitmap != null) {
+                        // 根据图片宽高比和当前窗口宽度计算显示高度
+                        val windowWidth = currentWidth -
+                            dpToPx(24f).toInt() // 减去左右 padding (12dp * 2)
+                        val ratio = bitmap.height.toFloat() / bitmap.width.toFloat()
+                        val targetHeight = (windowWidth * ratio).toInt()
+                        // 限制最大高度不超过屏幕一半
+                        val maxHeight = screenHeight / 2
+                        val finalHeight = targetHeight.coerceAtMost(maxHeight)
+
+                        val lp = coverImage.layoutParams as? LinearLayout.LayoutParams
+                            ?: LinearLayout.LayoutParams(
+                                LinearLayout.LayoutParams.MATCH_PARENT,
+                                LinearLayout.LayoutParams.WRAP_CONTENT
+                            )
+                        lp.height = finalHeight
+                        lp.width = LinearLayout.LayoutParams.MATCH_PARENT
+                        coverImage.layoutParams = lp
+
                         coverImage.setImageBitmap(bitmap)
                         coverImage.visibility = View.VISIBLE
                     } else {
@@ -421,10 +449,18 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
 
     /**
      * 综合 TouchListener：
-     * - 右下角 24dp 区域为缩放手柄
-     * - 其它区域为拖动
+     * - 右下角 28dp 区域为缩放手柄
+     * - 其它区域支持拖动、单击进入软件、双击暂停/播放
      */
     private inner class CombinedTouchListener : OnTouchListener {
+        // 单击/双击检测相关
+        private var lastClickTime: Long = 0
+        private var lastClickX: Float = 0f
+        private var lastClickY: Float = 0f
+        private var moved = false
+        private val clickDistanceThreshold = dpToPx(10f) // 移动距离超过 10dp 视为拖动
+        private val doubleClickTimeWindow = 300L // 300ms 内连续点击视为双击
+
         override fun onTouch(v: View, event: MotionEvent): Boolean {
             val lp = layoutParams ?: return false
             val resizeHandle = dpToPx(28f)
@@ -435,6 +471,7 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                     initialY = lp.y
                     initialTouchX = event.rawX
                     initialTouchY = event.rawY
+                    moved = false
 
                     // 检查是否点击在右下角缩放区
                     val viewLocation = IntArray(2)
@@ -453,15 +490,21 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                 }
 
                 MotionEvent.ACTION_MOVE -> {
+                    val dx = event.rawX - initialTouchX
+                    val dy = event.rawY - initialTouchY
+                    if (Math.abs(dx) > clickDistanceThreshold || Math.abs(dy) > clickDistanceThreshold) {
+                        moved = true
+                    }
+
                     if (isResizing) {
                         // 调整大小
-                        val dx = (event.rawX - resizeInitialX).toInt()
-                        val dy = (event.rawY - resizeInitialY).toInt()
-                        val newW = (resizeInitialW + dx)
+                        val dxMove = (event.rawX - resizeInitialX).toInt()
+                        val dyMove = (event.rawY - resizeInitialY).toInt()
+                        val newW = (resizeInitialW + dxMove)
                             .coerceAtLeast(dpToPx(200f).toInt())
                             .coerceAtMost(screenWidth)
                         val newH = if (resizeInitialH > 0) {
-                            (resizeInitialH + dy)
+                            (resizeInitialH + dyMove)
                                 .coerceAtLeast(dpToPx(80f).toInt())
                                 .coerceAtMost(screenHeight)
                         } else {
@@ -484,11 +527,56 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                 }
 
                 MotionEvent.ACTION_UP -> {
+                    val wasResizing = isResizing
                     isResizing = false
+
+                    // 未移动且非缩放，视为点击
+                    if (!moved && !wasResizing) {
+                        val now = System.currentTimeMillis()
+                        val dxClick = Math.abs(event.rawX - lastClickX)
+                        val dyClick = Math.abs(event.rawY - lastClickY)
+                        val timeDiff = now - lastClickTime
+
+                        if (timeDiff <= doubleClickTimeWindow &&
+                            dxClick <= clickDistanceThreshold * 2 &&
+                            dyClick <= clickDistanceThreshold * 2
+                        ) {
+                            // 双击：播放/暂停
+                            lastClickTime = 0 // 重置，避免连续多次触发
+                            emitEvent("toggle")
+                        } else {
+                            // 单击：延迟判断，防止双击时先触发单击
+                            lastClickTime = now
+                            lastClickX = event.rawX
+                            lastClickY = event.rawY
+                            postDelayed({
+                                // 300ms 后检查，如果仍为这次点击，则执行单击（进入软件）
+                                if (lastClickTime == now) {
+                                    launchApp()
+                                }
+                            }, doubleClickTimeWindow + 50)
+                        }
+                    }
                     return true
                 }
             }
             return false
+        }
+    }
+
+    /**
+     * 启动主应用（从悬浮窗单击回到 App）
+     */
+    private fun launchApp() {
+        try {
+            val launchIntent = reactContext.packageManager
+                ?.getLaunchIntentForPackage(reactContext.packageName)
+            launchIntent?.let {
+                it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                reactContext.startActivity(it)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "启动 App 失败", e)
         }
     }
 }
