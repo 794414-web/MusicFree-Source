@@ -66,67 +66,8 @@ const packages: Record<string, any> = {
     webdav,
 };
 
-/**
- * 创建一个深度安全的代理对象：
- * - 任何属性访问都返回另一个安全代理（避免 "Cannot read property 'xxx' of undefined"）
- * - 可以被当作函数调用，返回安全代理
- * - 解构 / 迭代时返回空结果
- * - JSON 序列化为空对象
- * 注意：仅在插件 require 未提供的模块时使用，确保插件解析阶段不会因访问不存在
- * 的属性链而崩溃。插件运行时如果真正依赖该模块的数据，仍可能得到 undefined 值。
- */
-function createSafeModuleProxy(): any {
-    let proxy: any;
-    const handler: ProxyHandler<any> = {
-        get(_target, prop, _receiver) {
-            if (prop === "default") {
-                return proxy;
-            }
-            if (prop === "__esModule") {
-                return true;
-            }
-            if (prop === "then") {
-                // 避免被当作 Promise 处理
-                return undefined;
-            }
-            if (prop === Symbol.toPrimitive) {
-                return () => "";
-            }
-            if (prop === Symbol.iterator) {
-                return function* () { /* 空迭代器 */ };
-            }
-            if (typeof prop === "symbol") {
-                return undefined;
-            }
-            return proxy;
-        },
-        apply() {
-            return proxy;
-        },
-        construct() {
-            return proxy;
-        },
-        has() {
-            return true;
-        },
-        ownKeys() {
-            return [];
-        },
-        getOwnPropertyDescriptor() {
-            return undefined;
-        },
-    };
-    proxy = new Proxy(function () {}, handler);
-    return proxy;
-}
-
 const _require = (packageName: string) => {
     let pkg = packages[packageName];
-    if (!pkg) {
-        devLog("warn", `插件请求了未提供的模块: ${packageName}`);
-        // 返回深度安全代理，避免插件访问属性链时崩溃
-        return createSafeModuleProxy();
-    }
     pkg.default = pkg;
     return pkg;
 };
@@ -990,31 +931,9 @@ export class Plugin {
                     env,
                 };
 
-                // 创建一个安全的 globalThis shim，确保插件访问全局对象时不会崩溃
-                // 部分插件（如 sixyin.js）依赖 globalThis.lx 等全局变量
-                // 这里提供一个安全的默认值，避免 "Cannot read property 'xxx' of undefined"
-                const safeGlobalThis = {
-                    lx: {
-                        EVENT_NAMES: {},
-                        on: () => {},
-                        send: () => {},
-                        env: "mobile",
-                        version: "0.0.0",
-                        currentScriptInfo: {},
-                        request: () => Promise.resolve({}),
-                        utils: {
-                            toFixed: (n: number, d: number) => Number(n).toFixed(d),
-                        },
-                    },
-                };
-
                 // eslint-disable-next-line no-new-func
                 _instance = Function(`
                     'use strict';
-                    // 确保 globalThis 上有安全的 lx 默认值
-                    if (!globalThis.lx) {
-                        globalThis.lx = ${JSON.stringify(safeGlobalThis.lx)};
-                    }
                     return function(require, __musicfree_require, module, exports, console, env, URL, process) {
                         ${funcCode}
                     }
