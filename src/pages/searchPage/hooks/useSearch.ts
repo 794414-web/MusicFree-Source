@@ -46,7 +46,8 @@ export default function useSearch() {
             const ensureResultStatus = () => {
                 finishedCount++;
                 if (finishedCount >= activeSearchCount) {
-                    // 所有活动搜索都结束了，确保切换到 RESULT
+                    // 所有活动搜索都结束了，清除兜底定时器并切换到 RESULT
+                    clearTimeout(safetyTimer);
                     const currentPageStatus =
                         getDefaultStore().get(pageStatusAtom);
                     if (currentPageStatus !== PageStatus.EDITING &&
@@ -74,7 +75,6 @@ export default function useSearch() {
                 if (!_platform || !_hash) {
                     // 插件无效，此时直接进入结果页
                     setPageStatus(PageStatus.RESULT);
-                    clearTimeout(safetyTimer);
                     return;
                 }
 
@@ -104,7 +104,6 @@ export default function useSearch() {
                     if (currentPageStatus !== PageStatus.EDITING) {
                         setPageStatus(PageStatus.RESULT);
                     }
-                    clearTimeout(safetyTimer);
                     return;
                 }
 
@@ -239,7 +238,6 @@ export default function useSearch() {
                     );
                 } finally {
                     ensureResultStatus();
-                    clearTimeout(safetyTimer);
                 }
             });
             // 如果没有任何插件真正执行搜索（全部提前跳过），确保切换到 RESULT
