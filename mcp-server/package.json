@@ -1,0 +1,20 @@
+{
+  "name": "musicfree-mcp-server",
+  "version": "1.0.0",
+  "description": "MusicFree 音乐播放器 MCP 服务器 - 支持飞书、企业微信、小智AI语音控制",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js --debug"
+  },
+  "keywords": ["musicfree", "mcp", "feishu", "wecom", "music", "nezha-l"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^1.6.0",
+    "express": "^4.18.2",
+    "body-parser": "^1.20.2",
+    "crypto": "^1.0.1",
+    "ws": "^8.16.0"
+  }
+}

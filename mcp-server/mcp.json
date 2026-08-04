@@ -1,0 +1,75 @@
+{
+  "$schema": "https://modelcontextprotocol.io/schemas/2024-11-05/server.json",
+  "name": "musicfree-mcp-server",
+  "version": "1.0.0",
+  "description": "MusicFree 音乐播放器 MCP 服务器 - 支持语音/文字控制车机音乐播放",
+  "capabilities": {
+    "tools": {}
+  },
+  "tools": [
+    {
+      "name": "play_music",
+      "description": "搜索并播放指定歌曲。支持歌手、歌名或组合查询，如：周杰伦的稻香、稻香、周杰伦",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "description": "搜索词，例如：周杰伦的稻香、稻香、周杰伦"
+          }
+        },
+        "required": ["query"]
+      }
+    },
+    {
+      "name": "pause_music",
+      "description": "暂停当前播放的音乐"
+    },
+    {
+      "name": "resume_music",
+      "description": "继续播放当前暂停的音乐"
+    },
+    {
+      "name": "play_next",
+      "description": "切换到下一首歌曲"
+    },
+    {
+      "name": "play_previous",
+      "description": "切换到上一首歌曲"
+    },
+    {
+      "name": "set_volume",
+      "description": "设置播放器音量",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "volume": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "音量值，0 为静音，1 为最大音量"
+          }
+        },
+        "required": ["volume"]
+      }
+    },
+    {
+      "name": "get_player_status",
+      "description": "获取播放器当前状态，包括播放状态、当前歌曲、播放列表、进度等"
+    },
+    {
+      "name": "send_command",
+      "description": "发送自然语言命令，支持：播放、暂停、继续、下一首、上一首、音量等",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "command": {
+            "type": "string",
+            "description": "自然语言命令，例如：播放周杰伦的稻香、暂停、下一首、音量调到50"
+          }
+        },
+        "required": ["command"]
+      }
+    }
+  ]
+}

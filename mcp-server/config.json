@@ -1,0 +1,54 @@
+{
+  "server": {
+    "port": 3000,
+    "host": "0.0.0.0"
+  },
+  "musicfree": {
+    "baseUrl": "http://192.168.1.100:3688",
+    "accessToken": ""
+  },
+  "feishu": {
+    "enabled": true,
+    "appId": "cli_aad6d5cf4ef9dbe4",
+    "appSecret": "0wmmKGbi2ajBbbdNiyg7PcpK6ixnbMjW",
+    "verificationToken": "",
+    "encryptKey": "",
+    "usePolling": true,
+    "pollingIntervalMs": 3000,
+    "defaultChatId": "oc_bf06d84e5dac6a54c70e085704034675",
+    "notifyOnPlay": true
+  },
+  "wecom": {
+    "enabled": true,
+    "corpId": "wwf338ed3ac3b489c7",
+    "agentId": "1000002",
+    "secret": "176fHYLQShOeo5S9EDQxSN5_pQw_WroyWvdhr6ILTd0",
+    "token": "FPSx3gjwr1NrUK",
+    "encodingAESKey": "gKImiK1IMbxR32vbkFukYklc7UoCjEcCO42VARjzyKq",
+    "receiveId": "",
+    "notifyOnPlay": true
+  },
+  "xiaozhi": {
+    "enabled": true,
+    "wsUrl": "wss://api.xiaozhi.me/mcp/?token=eyJhbGciOiJFUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjc5NTA3NiwiYWdlbnRJZCI6MTQyODYxOSwiZW5kcG9pbnRJZCI6ImFnZW50XzE0Mjg2MTkiLCJwdXJwb3NlIjoibWNwLWVuZHBvaW50IiwiaWF0IjoxNzg1MDYwMjcwLCJleHAiOjE4MTY2MTc4NzB9.URXFvB5ojv3EDtlUAvGdQQJv3XvKsaxrmzjf0s4HkBV2Ii0QG_iwh5Hu1ROWSkSSpIZ3FxOLXWKJYOkRlTrbIg",
+    "autoReconnect": true,
+    "baseReconnectDelay": 5000,
+    "maxReconnectDelay": 60000
+  },
+  "commands": {
+    "playPrefix": ["播放", "放一首", "来一首", "听", "我想听", "播放一首", "放", "放个", "来个", "点一首", "点歌"],
+    "pauseKeywords": ["暂停", "停一下", "停止播放", "别放了", "停", "停下"],
+    "resumeKeywords": ["继续", "继续播放", "接着放", "开始", "开始播放", "继续放"],
+    "nextKeywords": ["下一首", "切歌", "换一首", "下一曲", "跳过", "下一个", "换歌"],
+    "prevKeywords": ["上一首", "上一曲", "回到上一首", "上一个", "回上一首"],
+    "searchKeywords": ["搜索", "查找", "找"],
+    "volumeKeywords": ["音量", "声音"],
+    "volumeUpKeywords": ["大点声", "大声点", "声音大点", "音量大", "调大音量", "开大点", "声音开大点"],
+    "volumeDownKeywords": ["小点声", "小声点", "声音小点", "音量小", "调小音量", "开小点", "声音开小点"],
+    "helpKeywords": ["帮助", "help", "指令", "命令", "能做什么", "有什么功能", "怎么用", "使用说明"],
+    "statusKeywords": ["状态", "播放状态", "现在放的什么", "放的什么歌", "当前播放", "什么歌", "现在的歌"],
+    "repeatKeywords": ["循环模式", "播放模式", "随机", "单曲循环", "列表循环", "顺序播放"],
+    "muteKeywords": ["静音", "消音", "没声"],
+    "unmuteKeywords": ["取消静音", "恢复声音", "有声音"]
+  }
+}

@@ -1,0 +1,56 @@
+[
+  {
+    "name": "网易云音乐（Meting）",
+    "url": "https://raw.githubusercontent.com/your-repo/main/plugins/meting-netease.js",
+    "srcUrl": "https://raw.githubusercontent.com/your-repo/main/plugins/meting-netease.js",
+    "version": "1.0.0"
+  },
+  {
+    "name": "QQ音乐（Meting）",
+    "url": "https://raw.githubusercontent.com/your-repo/main/plugins/meting-tencent.js",
+    "srcUrl": "https://raw.githubusercontent.com/your-repo/main/plugins/meting-tencent.js",
+    "version": "1.0.0"
+  },
+  {
+    "name": "酷狗音乐（Meting）",
+    "url": "https://raw.githubusercontent.com/your-repo/main/plugins/meting-kugou.js",
+    "srcUrl": "https://raw.githubusercontent.com/your-repo/main/plugins/meting-kugou.js",
+    "version": "1.0.0"
+  },
+  {
+    "name": "酷我音乐（Meting）",
+    "url": "https://raw.githubusercontent.com/your-repo/main/plugins/meting-kuwo.js",
+    "srcUrl": "https://raw.githubusercontent.com/your-repo/main/plugins/meting-kuwo.js",
+    "version": "1.0.0"
+  },
+  {
+    "name": "网易云音乐（洛雪混合）",
+    "url": "https://raw.githubusercontent.com/your-repo/main/plugins/lx-wy.js",
+    "srcUrl": "https://raw.githubusercontent.com/your-repo/main/plugins/lx-wy.js",
+    "version": "1.0.0"
+  },
+  {
+    "name": "QQ音乐（洛雪混合）",
+    "url": "https://raw.githubusercontent.com/your-repo/main/plugins/lx-tx.js",
+    "srcUrl": "https://raw.githubusercontent.com/your-repo/main/plugins/lx-tx.js",
+    "version": "1.0.0"
+  },
+  {
+    "name": "酷狗音乐（洛雪混合）",
+    "url": "https://raw.githubusercontent.com/your-repo/main/plugins/lx-kg.js",
+    "srcUrl": "https://raw.githubusercontent.com/your-repo/main/plugins/lx-kg.js",
+    "version": "1.0.0"
+  },
+  {
+    "name": "酷我音乐（洛雪混合）",
+    "url": "https://raw.githubusercontent.com/your-repo/main/plugins/lx-kw.js",
+    "srcUrl": "https://raw.githubusercontent.com/your-repo/main/plugins/lx-kw.js",
+    "version": "1.0.0"
+  },
+  {
+    "name": "咪咕音乐（洛雪混合）",
+    "url": "https://raw.githubusercontent.com/your-repo/main/plugins/lx-mg.js",
+    "srcUrl": "https://raw.githubusercontent.com/your-repo/main/plugins/lx-mg.js",
+    "version": "1.0.0"
+  }
+]
