@@ -41,6 +41,9 @@ export interface IAppConfigProperties {
     "basic.floatingWindowTextColor": string;
     "basic.floatingWindowShowCover": boolean;
 
+    // Steering Wheel Control（方向盘控制，仅 Android，哪吒车机适配）
+    "basic.steeringWheelControl": boolean;
+
     // Builtin Plugins（内置音源版本标记）
     "basic.builtinPluginsVersion": string;
 

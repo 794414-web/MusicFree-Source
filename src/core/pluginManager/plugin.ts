@@ -32,9 +32,12 @@ import MediaCache from "../mediaCache";
 import _internalPluginMeta from "./meta";
 import { IPluginManager } from "@/types/core/pluginManager";
 
+// 创建插件专用的 axios 实例，避免污染全局
+const pluginAxios = axios.create({
+    timeout: 2000,
+});
 
-axios.defaults.timeout = 2000;
-axios.interceptors.response.use((response) => {
+pluginAxios.interceptors.response.use((response) => {
     // 统一setcookie格式，nodejs环境是数组，移动端环境都放在第一个元素
     const setCookie = response.headers["set-cookie"];
     if(setCookie && setCookie.length === 1) {
@@ -57,7 +60,7 @@ const deprecatedCookieManager = {
 const packages: Record<string, any> = {
     cheerio,
     "crypto-js": CryptoJs,
-    axios,
+    axios: pluginAxios,
     dayjs,
     "big-integer": bigInt,
     qs,
@@ -490,7 +493,7 @@ class PluginMethodsWrapper implements IPlugin.IPluginInstanceMethods {
             if (!(rawLrc || translation)) {
                 if (deprecatedLrcUrl) {
                     rawLrc = (
-                        await axios
+                        await pluginAxios
                             .get(deprecatedLrcUrl, { timeout: 3000 })
                             .catch(() => null)
                     )?.data;

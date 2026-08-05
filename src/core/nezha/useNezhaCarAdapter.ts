@@ -7,7 +7,7 @@ import {
 } from "@/native/nezha";
 import Theme from "@/core/theme";
 import { useEffect, useRef } from "react";
-import Config from "@/core/appConfig";
+import Config, { useAppConfig } from "@/core/appConfig";
 import { musicIsPaused } from "@/utils/trackUtils";
 
 /**
@@ -19,17 +19,22 @@ import { musicIsPaused } from "@/utils/trackUtils";
  * 3. 多屏检测 - 模块已注册，供悬浮窗模块后续使用
  *
  * 在 BootstrapComponent 中调用，随应用生命周期运行
+ *
+ * 方向盘控制可通过设置项 basic.steeringWheelControl 开关
+ * （默认开启，非哪吒车机可在设置中关闭）
  */
 export function useNezhaCarAdapter() {
     const unsubThemeRef = useRef<(() => void) | null>(null);
     const unsubSteeringRef = useRef<(() => void) | null>(null);
+    // 默认开启（undefined 视为 true），保证哪吒车机用户开箱即用
+    const enableSteeringWheel = useAppConfig("basic.steeringWheelControl") ?? true;
 
     useEffect(() => {
         let mounted = true;
 
         // ========== 1. 主题跟随系统 ==========
         const followSystem = Config.getConfig("theme.followSystem");
-        if (followSystem && NezhaThemeModule.isSupported) {
+        if (followSystem && NezhaThemeModule.isSupported()) {
             // 启动主题监听（启动时会立即通知一次当前状态）
             NezhaThemeModule.startListening();
 
@@ -45,7 +50,8 @@ export function useNezhaCarAdapter() {
         }
 
         // ========== 2. 方向盘媒体按键 ==========
-        if (SteeringWheelModule.isSupported) {
+        // 仅当用户在设置中开启且设备支持时启用
+        if (enableSteeringWheel && SteeringWheelModule.isSupported()) {
             SteeringWheelModule.startListening();
 
             unsubSteeringRef.current = onSteeringWheelKey(async (event) => {
@@ -100,7 +106,10 @@ export function useNezhaCarAdapter() {
                 unsubSteeringRef.current = null;
             }
             NezhaThemeModule.stopListening();
-            SteeringWheelModule.stopListening();
+            // 仅在方控启用时停止监听，避免对未启动的模块调用
+            if (enableSteeringWheel) {
+                SteeringWheelModule.stopListening();
+            }
         };
-    }, []);
+    }, [enableSteeringWheel]);
 }

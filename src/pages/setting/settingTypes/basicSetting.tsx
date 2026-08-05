@@ -13,6 +13,7 @@ import { ROUTE_PATH, useNavigate } from "@/core/router";
 import useColors from "@/hooks/useColors";
 import LyricUtil, { NativeTextAlignment } from "@/native/lyricUtil";
 import { FloatingWindowModule } from "@/native/floatingWindow";
+import { SteeringWheelModule } from "@/native/nezha";
 import { AppConfigPropertyKey } from "@/types/core/config";
 import { clearCache, getCacheSize, sizeFormatter } from "@/utils/fileUtils";
 import { clearLog, getErrorLogContent } from "@/utils/log";
@@ -425,6 +426,10 @@ export default function BasicSetting() {
             title: t("basicSettings.floatingWindow"),
             data: [] as Array<any>,
             footer: <FloatingWindowSetting />,
+        }, {
+            title: t("basicSettings.steeringWheel"),
+            data: [] as Array<any>,
+            footer: <SteeringWheelSetting />,
         }] : []),
         {
             title: t("basicSettings.cache"),
@@ -1118,5 +1123,49 @@ const floatingStyles = StyleSheet.create({
         flexDirection: "row",
         alignItems: "center",
         paddingHorizontal: rpx(24),
+    },
+});
+
+function SteeringWheelSetting() {
+    const enableSteering = useAppConfig("basic.steeringWheelControl");
+    const { t } = useI18N();
+
+    const onToggleSteering = (newValue: boolean) => {
+        if (newValue && !SteeringWheelModule.isSupported()) {
+            Toast.warn(t("basicSettings.steeringWheel.notSupported"));
+            return;
+        }
+        Config.setConfig("basic.steeringWheelControl", newValue);
+    };
+
+    const enableSwitch = createSwitch(
+        t("basicSettings.steeringWheel.enable"),
+        "basic.steeringWheelControl",
+        enableSteering ?? true,
+        onToggleSteering,
+    );
+
+    return (
+        <View>
+            <ListItem
+                withHorizontalPadding
+                heightType="small"
+                onPress={enableSwitch.onPress}>
+                <ListItem.Content title={enableSwitch.title} />
+                {enableSwitch.right}
+            </ListItem>
+            <ThemeText style={steeringStyles.hint}>
+                {t("basicSettings.steeringWheel.hint")}
+            </ThemeText>
+        </View>
+    );
+}
+
+const steeringStyles = StyleSheet.create({
+    hint: {
+        fontSize: rpx(24),
+        paddingHorizontal: rpx(24),
+        paddingVertical: rpx(12),
+        opacity: 0.6,
     },
 });

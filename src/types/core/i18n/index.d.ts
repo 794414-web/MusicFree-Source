@@ -359,7 +359,13 @@ export interface ILanguageData {
     "basicSettings.floatingWindow.fontSize": string; // 字体大小
     "basicSettings.floatingWindow.textColor": string; // 文本颜色
     "basicSettings.floatingWindow.backgroundColor": string; // 背景颜色
-    
+    "basicSettings.floatingWindow.showCover": string; // 显示歌曲封面
+
+    "basicSettings.steeringWheel": string; // 方向盘控制
+    "basicSettings.steeringWheel.enable": string; // 开启方向盘控制
+    "basicSettings.steeringWheel.notSupported": string; // 当前设备不支持方向盘控制
+    "basicSettings.steeringWheel.hint": string; // 仅哪吒车机适用，非车机可关闭
+
     "basicSettings.cache": string; // 缓存
     "basicSettings.cache.musicCacheLimit": string; // 音乐缓存上限
     "basicSettings.cache.clearMusicCache": string; // 清除音乐缓存
