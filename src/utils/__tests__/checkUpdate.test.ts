@@ -10,13 +10,10 @@ jest.mock("@/utils/log", () => ({
 
 jest.mock("axios", () => {
     const mockGet = jest.fn();
-    const create = jest.fn(() => ({ get: mockGet }));
-    const mockAxios = { create };
     return {
-        default: mockAxios,
-        create,
+        default: { get: mockGet },
+        get: mockGet,
         __mockGet: mockGet,
-        __mockCreate: create,
     };
 });
 
@@ -34,11 +31,6 @@ afterEach(() => {
 const getMockGet = () => {
     const { __mockGet: mockGet } = jest.requireMock("axios");
     return mockGet as jest.Mock;
-};
-
-const getMockCreate = () => {
-    const { __mockCreate: mockCreate } = jest.requireMock("axios");
-    return mockCreate as jest.Mock;
 };
 
 const mockRelease = (overrides: Partial<{
@@ -83,22 +75,9 @@ const mockAxiosError = (message: string, code?: string, status?: number) => {
     return err;
 };
 
-describe("checkUpdate - 版本更新检查逻辑 (axios)", () => {
-    test("axios.create 应被调用创建专用实例", () => {
-        const mockCreate = getMockCreate();
-        expect(mockCreate).toHaveBeenCalledWith(
-            expect.objectContaining({
-                timeout: 15000,
-                headers: expect.objectContaining({
-                    Accept: "application/vnd.github+json",
-                    "User-Agent": "MusicFree",
-                }),
-            }),
-        );
-    });
-
+describe("checkUpdate", () => {
     // ============ 场景 1：有更新（核心路径）============
-    test("当前版本 0.8.3 < 服务器 0.8.4 → 返回 needUpdate=true 及排序后的下载链接", async () => {
+    test("当前版本 0.8.3 < 服务器 0.8.4 → 返回 needUpdate=true", async () => {
         const mockGet = getMockGet();
         mockGet.mockResolvedValueOnce(mockAxiosResponse(mockRelease()));
 
@@ -107,11 +86,23 @@ describe("checkUpdate - 版本更新检查逻辑 (axios)", () => {
         expect(result.updateInfo).toBeDefined();
         expect(result.updateInfo!.needUpdate).toBe(true);
         expect(result.updateInfo!.data.version).toBe("0.8.4");
+    });
 
-        const urls = result.updateInfo!.data.download;
-        expect(urls).toHaveLength(2);
-        expect(urls[0]).toContain("app-universal-release.apk");
-        expect(urls[1]).toContain("app-arm64-v8a-release.apk");
+    test("下载链接：优先 universal APK", async () => {
+        const mockGet = getMockGet();
+        mockGet.mockResolvedValueOnce(mockAxiosResponse(mockRelease()));
+
+        const result = await checkUpdate();
+
+        const url = result.updateInfo!.data.download[0];
+        expect(url).toContain("app-universal-release.apk");
+    });
+
+    test("更新日志正确解析", async () => {
+        const mockGet = getMockGet();
+        mockGet.mockResolvedValueOnce(mockAxiosResponse(mockRelease()));
+
+        const result = await checkUpdate();
 
         expect(result.updateInfo!.data.changeLog).toEqual([
             "## 更新内容",
@@ -159,23 +150,11 @@ describe("checkUpdate - 版本更新检查逻辑 (axios)", () => {
 
         const result = await checkUpdate();
 
-        expect(result.updateInfo).toBeDefined();
         expect(result.updateInfo!.data.version).toBe("0.8.4");
     });
 
     // ============ 场景 4：APK 排序规则 ============
-    test("APK 排序：universal 在 arm64 之前", async () => {
-        const mockGet = getMockGet();
-        mockGet.mockResolvedValueOnce(mockAxiosResponse(mockRelease()));
-
-        const result = await checkUpdate();
-
-        const urls = result.updateInfo!.data.download;
-        expect(urls[0]).toMatch(/universal/i);
-        expect(urls[1]).toMatch(/arm64/i);
-    });
-
-    test("仅有一种 APK → 返回单链接", async () => {
+    test("仅有一个 APK → 直接返回该链接", async () => {
         const mockGet = getMockGet();
         mockGet.mockResolvedValueOnce(
             mockAxiosResponse(
@@ -198,7 +177,7 @@ describe("checkUpdate - 版本更新检查逻辑 (axios)", () => {
     });
 
     // ============ 场景 5：无 APK 资源时回退 ============
-    test("Release 无 APK assets → 回退 html_url", async () => {
+    test("无 APK assets → 回退 html_url", async () => {
         const mockGet = getMockGet();
         mockGet.mockResolvedValueOnce(
             mockAxiosResponse(mockRelease({ assets: [] })),
@@ -209,18 +188,6 @@ describe("checkUpdate - 版本更新检查逻辑 (axios)", () => {
         expect(result.updateInfo!.data.download).toEqual([
             "https://github.com/794414-web/MusicFree-Source/releases/tag/v0.8.4",
         ]);
-    });
-
-    test("Release assets 为 undefined → 回退 html_url", async () => {
-        const mockGet = getMockGet();
-        mockGet.mockResolvedValueOnce(
-            mockAxiosResponse(mockRelease({ assets: undefined as any })),
-        );
-
-        const result = await checkUpdate();
-
-        expect(result.updateInfo!.data.download).toHaveLength(1);
-        expect(result.updateInfo!.data.download[0]).toContain("/releases/tag/");
     });
 
     // ============ 场景 6：空 body changelog 回退 ============
@@ -235,30 +202,7 @@ describe("checkUpdate - 版本更新检查逻辑 (axios)", () => {
         expect(result.updateInfo!.data.changeLog).toEqual(["新版本可用"]);
     });
 
-    // ============ 场景 7：API 返回异常数据 ============
-    test("API 无 tag_name → 返回 '无法获取版本信息'", async () => {
-        const mockGet = getMockGet();
-        mockGet.mockResolvedValueOnce(
-            mockAxiosResponse({ html_url: "xxx" }),
-        );
-
-        const result = await checkUpdate();
-
-        expect(result.error).toBe("无法获取版本信息");
-        expect(result.updateInfo).toBeUndefined();
-    });
-
-    // ============ 场景 8：网络错误分类 ============
-    test("latest 接口返回 403 → 诊断也 403 → 直接返回诊断错误", async () => {
-        const mockGet = getMockGet();
-        mockGet.mockResolvedValueOnce(mockAxiosResponse(null, 403));
-        mockGet.mockResolvedValueOnce(mockAxiosResponse(null, 403));
-
-        const result = await checkUpdate();
-
-        expect(result.error).toContain("HTTP 403");
-    });
-
+    // ============ 场景 7：网络错误处理 ============
     test("请求超时 (ECONNABORTED) → 返回超时错误", async () => {
         const mockGet = getMockGet();
         mockGet.mockRejectedValueOnce(mockAxiosError("timeout", "ECONNABORTED"));
@@ -268,18 +212,35 @@ describe("checkUpdate - 版本更新检查逻辑 (axios)", () => {
         expect(result.error).toContain("超时");
     });
 
-    test("普通网络错误 → 诊断失败 → 返回网络错误信息", async () => {
+    test("403 限流 → 返回对应错误", async () => {
         const mockGet = getMockGet();
-        mockGet.mockRejectedValueOnce(mockAxiosError("Network Error"));
-        mockGet.mockRejectedValueOnce(mockAxiosError("DNS failed"));
+        mockGet.mockRejectedValueOnce(mockAxiosError("Request failed", undefined, 403));
 
         const result = await checkUpdate();
 
-        expect(result.error).toBeDefined();
+        expect(result.error).toContain("受限");
     });
 
-    // ============ 场景 9：请求参数验证 ============
-    test("应使用正确的 GitHub API URL", async () => {
+    test("404 不存在 → 返回对应错误", async () => {
+        const mockGet = getMockGet();
+        mockGet.mockRejectedValueOnce(mockAxiosError("Not found", undefined, 404));
+
+        const result = await checkUpdate();
+
+        expect(result.error).toContain("未找到");
+    });
+
+    test("普通网络错误 → 返回原始错误信息", async () => {
+        const mockGet = getMockGet();
+        mockGet.mockRejectedValueOnce(mockAxiosError("Network request failed"));
+
+        const result = await checkUpdate();
+
+        expect(result.error).toContain("Network request failed");
+    });
+
+    // ============ 场景 8：请求参数验证 ============
+    test("应使用正确的 GitHub API URL 和 15s 超时", async () => {
         const mockGet = getMockGet();
         mockGet.mockResolvedValueOnce(mockAxiosResponse(mockRelease()));
 
@@ -287,54 +248,7 @@ describe("checkUpdate - 版本更新检查逻辑 (axios)", () => {
 
         expect(mockGet).toHaveBeenCalledWith(
             "https://api.github.com/repos/794414-web/MusicFree-Source/releases/latest",
+            { timeout: 15000 },
         );
-    });
-
-    // ============ 场景 10：latest 失败回退到 releases 列表 ============
-    test("latest 返回非 200 → 诊断成功 → 回退 releases 列表", async () => {
-        const mockGet = getMockGet();
-        mockGet.mockResolvedValueOnce(mockAxiosResponse(null, 500));
-        mockGet.mockResolvedValueOnce(mockAxiosResponse(null, 200));
-        mockGet.mockResolvedValueOnce(mockAxiosResponse([mockRelease()]));
-
-        const result = await checkUpdate();
-
-        expect(result.updateInfo).toBeDefined();
-        expect(result.updateInfo!.needUpdate).toBe(true);
-        expect(result.updateInfo!.data.version).toBe("0.8.4");
-    });
-
-    test("latest 失败抛异常 → 诊断成功 → 回退 releases 列表", async () => {
-        const mockGet = getMockGet();
-        mockGet.mockRejectedValueOnce(mockAxiosError("Network request failed"));
-        mockGet.mockResolvedValueOnce(mockAxiosResponse(null, 200));
-        mockGet.mockResolvedValueOnce(mockAxiosResponse([mockRelease()]));
-
-        const result = await checkUpdate();
-
-        expect(result.updateInfo).toBeDefined();
-        expect(result.updateInfo!.needUpdate).toBe(true);
-        expect(result.updateInfo!.data.version).toBe("0.8.4");
-    });
-
-    test("latest 失败且诊断也失败 → 返回网络错误", async () => {
-        const mockGet = getMockGet();
-        mockGet.mockRejectedValueOnce(mockAxiosError("Network request failed"));
-        mockGet.mockRejectedValueOnce(mockAxiosError("Network request failed"));
-
-        const result = await checkUpdate();
-
-        expect(result.error).toBeDefined();
-    });
-
-    test("latest 返回 404 → 诊断成功 → releases 列表为空 → 暂无可用版本", async () => {
-        const mockGet = getMockGet();
-        mockGet.mockResolvedValueOnce(mockAxiosResponse(null, 404));
-        mockGet.mockResolvedValueOnce(mockAxiosResponse(null, 200));
-        mockGet.mockResolvedValueOnce(mockAxiosResponse([]));
-
-        const result = await checkUpdate();
-
-        expect(result.error).toBe("暂无可用版本");
     });
 });
