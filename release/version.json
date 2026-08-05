@@ -1,12 +1,17 @@
 {
-  "version": "1.0.7",
+  "version": "1.0.8",
   "changeLog": [
-    "## v1.0.7 更新内容",
+    "## v1.0.8 更新内容",
     "",
-    "### 版本号升级",
-    "- 1.0.6 → 1.0.7"
+    "### 修复手机闪退问题",
+    "- 关闭 R8 代码混淆和资源压缩",
+    "- 解决部分手机设备上 App 闪退打不开的问题",
+    "",
+    "### 说明",
+    "- 模拟器测试正常",
+    "- 此版本为稳定版，请在手机上测试"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.0.7/MusicFree-1.0.7-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.0.8/MusicFree-1.0.8-universal.apk"
   ]
 }
