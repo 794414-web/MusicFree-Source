@@ -92,3 +92,8 @@ web-build/
 
 # APK files (uploaded as GitHub Releases instead)
 *.apk
+
+# 测试调试文件
+ui*.xml
+mock_update_server.py
+screen.png

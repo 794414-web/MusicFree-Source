@@ -1,19 +1,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import ThemeText from "@/components/base/themeText";
 import { StyleSheet, View, ActivityIndicator } from "react-native";
+import { ScrollView, TouchableOpacity } from "react-native-gesture-handler";
 import rpx, { vh } from "@/utils/rpx";
 import openUrl from "@/utils/openUrl";
 import Clipboard from "@react-native-clipboard/clipboard";
-import { ScrollView, TouchableOpacity } from "react-native-gesture-handler";
 import { hideDialog } from "../useDialog";
 import Checkbox from "@/components/base/checkbox";
-import Button from "@/components/base/textButton.tsx";
 import Dialog from "./base";
 import PersistStatus from "@/utils/persistStatus";
 import { useI18N } from "@/core/i18n";
 import { ApkUpdateModule, onApkUpdateEvent } from "@/native/apkUpdate";
 import Toast from "@/utils/toast";
-import { Log } from "@/utils/log";
 
 interface IDownloadDialogProps {
     version: string;
@@ -63,21 +61,20 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
 
     /** 直接下载并安装 */
     const handleDownloadAndInstall = async (url: string) => {
+        if (downloading) return;
+        setDownloading(true);
+        setProgress(0);
         PersistStatus.set("app.skipVersion", undefined);
 
         try {
             if (!ApkUpdateModule.isSupported()) {
+                setDownloading(false);
                 openUrl(url);
                 Clipboard.setString(url);
                 return;
             }
 
-            setDownloading(true);
-            setProgress(0);
-            Log.d("开始下载 APK: " + url);
-
             const downloadId = await ApkUpdateModule.downloadAndInstall(url);
-            Log.d("下载已启动, downloadId=" + downloadId);
 
             let stalledCount = 0;
             let lastProgress = -1;
@@ -86,7 +83,7 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
             timerRef.current = setInterval(async () => {
                 try {
                     const p = await ApkUpdateModule.getDownloadProgress();
-                    
+
                     if (p === -1) {
                         if (!failedReported) {
                             failedReported = true;
@@ -132,7 +129,6 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
         } catch (e: any) {
             setDownloading(false);
             const msg = e?.message || "未知错误";
-            Log.e("下载启动失败: " + msg);
             Toast.warn("下载启动失败: " + msg);
         }
     };
@@ -186,33 +182,40 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                     </TouchableOpacity>
                 )}
                 <View style={style.buttonGroup}>
-                    <Button
+                    <TouchableOpacity
                         style={style.button}
+                        activeOpacity={0.6}
                         onPress={() => {
                             if (skipState) {
                                 PersistStatus.set("app.skipVersion", version);
                             }
                             hideDialog();
                         }}>
-                        {t("common.cancel")}
-                    </Button>
-                    <Button
+                        <ThemeText style={style.buttonText}>
+                            {t("common.cancel")}
+                        </ThemeText>
+                    </TouchableOpacity>
+                    <TouchableOpacity
                         style={style.button}
-                        onPress={() => handleDownloadAndInstall(fromUrl)}
-                        disabled={downloading}
-                    >
-                        {downloading ? "下载中" : "立即更新"}
-                    </Button>
+                        activeOpacity={0.6}
+                        onPress={() => handleDownloadAndInstall(fromUrl)}>
+                        <ThemeText style={style.buttonText}>
+                            {downloading ? "下载中" : "立即更新"}
+                        </ThemeText>
+                    </TouchableOpacity>
                     {backUrl && !downloading && (
-                        <Button
+                        <TouchableOpacity
                             style={style.button}
+                            activeOpacity={0.6}
                             onPress={async () => {
                                 PersistStatus.set("app.skipVersion", undefined);
                                 openUrl(backUrl);
                                 Clipboard.setString(backUrl);
                             }}>
-                            {t("dialog.downloadDialog.backupUrl")}
-                        </Button>
+                            <ThemeText style={style.buttonText}>
+                                {t("dialog.downloadDialog.backupUrl")}
+                            </ThemeText>
+                        </TouchableOpacity>
                     )}
                 </View>
             </Dialog.Actions>
@@ -282,6 +285,10 @@ const style = StyleSheet.create({
         paddingLeft: rpx(28),
         paddingVertical: rpx(14),
         marginLeft: rpx(16),
-        alignItems: "flex-end",
+        alignItems: "center",
+        justifyContent: "center",
+    },
+    buttonText: {
+        fontSize: rpx(28),
     },
 });

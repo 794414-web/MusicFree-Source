@@ -1,8 +1,8 @@
-import React from "react";
+﻿import React from "react";
 import { StyleSheet } from "react-native";
 
 import NavBar from "./components/navBar";
-import MiniPlayer from "@/components/miniPlayer";
+import MusicBar from "@/components/musicBar";
 import { createDrawerNavigator } from "@react-navigation/drawer";
 import HomeDrawer from "./components/drawer";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -30,7 +30,7 @@ function Home() {
                     )}
                 </>
             </HorizontalSafeAreaView>
-            <MiniPlayer />
+            <MusicBar />
         </SafeAreaView>
     );
 }

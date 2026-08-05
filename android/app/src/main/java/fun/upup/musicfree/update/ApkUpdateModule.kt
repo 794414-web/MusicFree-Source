@@ -191,17 +191,28 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                 Log.w(TAG, "DownloadManager 返回 -1，回退到 OkHttp")
                 useOkHttpFallback = true
                 startDirectHttpDownload(url)
-                promise.resolve(0)
+                promise.resolve(0.0)
                 return
             }
 
             registerDownloadReceiver()
-            promise.resolve(downloadId)
+            promise.resolve(downloadId.toDouble())
         } catch (e: Exception) {
             Log.w(TAG, "DownloadManager 异常，回退到 OkHttp: ${e.message}")
+            try {
+                if (downloadId != -1L) {
+                    val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                    dm.remove(downloadId)
+                    Log.d(TAG, "已取消 DownloadManager 下载: $downloadId")
+                }
+            } catch (_: Exception) {}
+            try {
+                reactContext.unregisterReceiver(downloadCompleteReceiver)
+                downloadReceiverRegistered = false
+            } catch (_: Exception) {}
             useOkHttpFallback = true
             startDirectHttpDownload(url)
-            promise.resolve(0)
+            promise.resolve(0.0)
         }
     }
 
