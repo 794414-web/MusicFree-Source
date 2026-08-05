@@ -141,13 +141,13 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
     override fun getName(): String = "ApkUpdate"
 
     /**
-     * 检查 Gitee 更新（原生 OkHttp 实现，绕过 RN JS 网络层）
-     * JS 层的 axios/fetch 在车机 RN 环境下不稳定，
-     * 因此直接在原生层使用已验证可用的 OkHttp 请求 Gitee API
+     * 检查更新（原生 OkHttp 实现，直接下载静态 version.json）
+     * 不依赖任何 API，直接下载 Gitee Release 附件中的 version.json，
+     * 简单可靠，不受 API 限流/鉴权影响
      */
     @ReactMethod
     fun checkUpdate(currentVersion: String, promise: Promise) {
-        val url = "https://gitee.com/api/v5/repos/ken794414/MusicFree-Source/releases/latest"
+        val url = "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.0.6/version.json"
         Log.d(TAG, "checkUpdate: currentVersion=$currentVersion")
 
         val scope = CoroutineScope(Dispatchers.IO)
@@ -161,12 +161,11 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
 
                 val response = httpClient.newCall(request).execute()
                 if (!response.isSuccessful) {
-                    val bodyStr = response.body?.string() ?: ""
                     response.close()
                     if (response.code == 403) {
-                        promise.reject("403", "Gitee API 请求受限，请稍后再试")
+                        promise.reject("403", "更新文件访问受限，请检查网络")
                     } else if (response.code == 404) {
-                        promise.reject("404", "未找到可用版本")
+                        promise.reject("404", "未找到更新文件")
                     } else {
                         promise.reject("${response.code}", "检查更新失败: HTTP ${response.code}")
                     }
@@ -180,12 +179,11 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                 }
                 response.close()
 
-                val release = JSONObject(bodyStr)
-                val tagName = release.optString("tag_name", "")
-                val latestVersion = tagName.removePrefix("v").removePrefix("V")
+                val versionJson = JSONObject(bodyStr)
+                val latestVersion = versionJson.optString("version", "")
 
                 if (latestVersion.isEmpty()) {
-                    promise.reject("NO_TAG", "无法获取版本信息")
+                    promise.reject("NO_VERSION", "无法获取版本信息")
                     return@launch
                 }
 
@@ -197,47 +195,24 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                     return@launch
                 }
 
-                val changeLog = release.optString("body", "")
-                    .lines()
-                    .filter { it.isNotBlank() }
-                    .toTypedArray()
+                val changeLogArray = versionJson.optJSONArray("changeLog") ?: JSONArray()
+                val downloadArray = versionJson.optJSONArray("download") ?: JSONArray()
 
-                val assets = release.optJSONArray("assets") ?: JSONArray()
-                val downloadUrls = mutableListOf<String>()
-
-                for (i in 0 until assets.length()) {
-                    val asset = assets.getJSONObject(i)
-                    val name = asset.optString("name", "").lowercase()
-                    if (name.endsWith(".apk")) {
-                        downloadUrls.add(asset.optString("browser_download_url", ""))
-                    }
+                val changeLog = Arguments.createArray()
+                for (i in 0 until changeLogArray.length()) {
+                    changeLog.pushString(changeLogArray.optString(i, ""))
                 }
 
-                if (downloadUrls.isEmpty()) {
-                    downloadUrls.add(release.optString("html_url", ""))
-                } else {
-                    downloadUrls.sortBy { url ->
-                        when {
-                            url.contains("universal") -> 0
-                            url.contains("arm64") -> 1
-                            else -> 2
-                        }
-                    }
+                val download = Arguments.createArray()
+                for (i in 0 until downloadArray.length()) {
+                    download.pushString(downloadArray.optString(i, ""))
                 }
 
                 val result = Arguments.createMap().apply {
                     putBoolean("needUpdate", true)
                     putString("version", latestVersion)
-                    putArray("changeLog", Arguments.createArray().apply {
-                        for (line in changeLog) {
-                            pushString(line)
-                        }
-                    })
-                    putArray("download", Arguments.createArray().apply {
-                        for (u in downloadUrls) {
-                            pushString(u)
-                        }
-                    })
+                    putArray("changeLog", changeLog)
+                    putArray("download", download)
                 }
 
                 Log.d(TAG, "checkUpdate: update available $currentVersion -> $latestVersion")
@@ -246,7 +221,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                 Log.e(TAG, "checkUpdate failed", e)
                 val msg = when {
                     e is java.net.SocketTimeoutException -> "检查更新超时，请检查网络连接"
-                    e is java.net.UnknownHostException -> "无法访问 Gitee API: 网络连接失败"
+                    e is java.net.UnknownHostException -> "无法访问更新服务器: 网络连接失败"
                     else -> "检查更新失败: ${e.message}"
                 }
                 promise.reject("NETWORK", msg)

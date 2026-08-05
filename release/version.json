@@ -1,3 +1,19 @@
-{"version":"0.6.2","changeLog":[
-  "【优化】优化了软件启动速度 (需要在【侧边栏-基本设置-插件】中打开【启用插件懒加载】开关)"
-],"download":["https://r0rvr854dd1.feishu.cn/drive/folder/KLqKfWOA3lx8MKdo8xNcYpR8n7t"]}
+{
+  "version": "1.0.6",
+  "changeLog": [
+    "## v1.0.6 更新内容",
+    "",
+    "### 核心变更：更新源切换到 Gitee",
+    "- 版本检查源从 GitHub 切换到 Gitee，解决国内车机访问不稳定问题",
+    "",
+    "### 已包含功能",
+    "- 原生 OkHttp 检查更新（绕过 RN JS 网络层）",
+    "- DownloadManager 卡顿检测 + OkHttp 直连下载兜底",
+    "- 方向盘控制开关（设置→基础设置→方向盘控制）",
+    "- 浮动窗口双击播放/暂停，单击进入App",
+    "- R8 代码混淆 + 资源压缩"
+  ],
+  "download": [
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.0.6/MusicFree-1.0.6-universal.apk"
+  ]
+}
