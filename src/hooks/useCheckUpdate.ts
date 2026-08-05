@@ -14,7 +14,7 @@ export const checkUpdateAndShowResult = (
         const { updateInfo, error } = result ?? {};
         if (error) {
             if (showToast) {
-                Toast.warn("检查更新失败: " + error);
+                Toast.warn(error);
             }
             return;
         }

@@ -8,11 +8,14 @@ import { NativeModule, NativeModules, Platform, DeviceEventEmitter } from 'react
  */
 
 interface IApkUpdateModule extends NativeModule {
-    /** 下载 APK 并自动安装，返回 downloadId；失败时抛出错误 */
+    checkUpdate: (currentVersion: string) => Promise<{
+        needUpdate: boolean;
+        version?: string;
+        changeLog?: string[];
+        download?: string[];
+    }>;
     downloadAndInstall: (url: string) => Promise<number>;
-    /** 获取下载进度 0-100，-1 表示无下载 */
     getDownloadProgress: () => Promise<number>;
-    /** 获取最近的错误信息 */
     getLastError: () => Promise<string>;
     addListener: (eventName: string) => void;
     removeListeners: (count: number) => void;
@@ -26,6 +29,14 @@ function isApkUpdateSupported(): boolean {
 
 export const ApkUpdateModule = {
     isSupported: isApkUpdateSupported,
+
+    checkUpdate: (currentVersion: string) => {
+        if (!ApkUpdateNative) return Promise.reject(new Error('原生模块未加载'));
+        return ApkUpdateNative.checkUpdate(currentVersion).catch((e: any) => {
+            const msg = e?.message || e?.toString?.() || '未知错误';
+            throw new Error(msg);
+        });
+    },
 
     downloadAndInstall: (url: string): Promise<number> => {
         if (!ApkUpdateNative) return Promise.reject(new Error('原生模块未加载'));

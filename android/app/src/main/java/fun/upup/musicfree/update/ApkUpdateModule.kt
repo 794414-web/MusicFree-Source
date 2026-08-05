@@ -24,6 +24,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
+import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.util.concurrent.TimeUnit
@@ -137,6 +139,133 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
     }
 
     override fun getName(): String = "ApkUpdate"
+
+    /**
+     * 检查 GitHub 更新（原生 OkHttp 实现，绕过 RN JS 网络层）
+     * JS 层的 axios/fetch 在车机 RN 环境下不稳定，
+     * 因此直接在原生层使用已验证可用的 OkHttp 请求 GitHub API
+     */
+    @ReactMethod
+    fun checkUpdate(currentVersion: String, promise: Promise) {
+        val url = "https://api.github.com/repos/794414-web/MusicFree-Source/releases/latest"
+        Log.d(TAG, "checkUpdate: currentVersion=$currentVersion")
+
+        val scope = CoroutineScope(Dispatchers.IO)
+        scope.launch {
+            try {
+                val request = Request.Builder()
+                    .url(url)
+                    .header("Accept", "application/vnd.github+json")
+                    .header("User-Agent", "MusicFree")
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+                if (!response.isSuccessful) {
+                    val bodyStr = response.body?.string() ?: ""
+                    response.close()
+                    if (response.code == 403) {
+                        promise.reject("403", "GitHub API 请求受限，请稍后再试")
+                    } else if (response.code == 404) {
+                        promise.reject("404", "未找到可用版本")
+                    } else {
+                        promise.reject("${response.code}", "检查更新失败: HTTP ${response.code}")
+                    }
+                    return@launch
+                }
+
+                val bodyStr = response.body?.string() ?: run {
+                    response.close()
+                    promise.reject("EMPTY", "检查更新失败: 空响应")
+                    return@launch
+                }
+                response.close()
+
+                val release = JSONObject(bodyStr)
+                val tagName = release.optString("tag_name", "")
+                val latestVersion = tagName.removePrefix("v").removePrefix("V")
+
+                if (latestVersion.isEmpty()) {
+                    promise.reject("NO_TAG", "无法获取版本信息")
+                    return@launch
+                }
+
+                val needUpdate = compareVersion(latestVersion, currentVersion) > 0
+                if (!needUpdate) {
+                    promise.resolve(Arguments.createMap().apply {
+                        putBoolean("needUpdate", false)
+                    })
+                    return@launch
+                }
+
+                val changeLog = release.optString("body", "")
+                    .lines()
+                    .filter { it.isNotBlank() }
+                    .toTypedArray()
+
+                val assets = release.optJSONArray("assets") ?: JSONArray()
+                val downloadUrls = mutableListOf<String>()
+
+                for (i in 0 until assets.length()) {
+                    val asset = assets.getJSONObject(i)
+                    val name = asset.optString("name", "").lowercase()
+                    if (name.endsWith(".apk")) {
+                        downloadUrls.add(asset.optString("browser_download_url", ""))
+                    }
+                }
+
+                if (downloadUrls.isEmpty()) {
+                    downloadUrls.add(release.optString("html_url", ""))
+                } else {
+                    downloadUrls.sortBy { url ->
+                        when {
+                            url.contains("universal") -> 0
+                            url.contains("arm64") -> 1
+                            else -> 2
+                        }
+                    }
+                }
+
+                val result = Arguments.createMap().apply {
+                    putBoolean("needUpdate", true)
+                    putString("version", latestVersion)
+                    putArray("changeLog", Arguments.createArray().apply {
+                        for (line in changeLog) {
+                            pushString(line)
+                        }
+                    })
+                    putArray("download", Arguments.createArray().apply {
+                        for (u in downloadUrls) {
+                            pushString(u)
+                        }
+                    })
+                }
+
+                Log.d(TAG, "checkUpdate: update available $currentVersion -> $latestVersion")
+                promise.resolve(result)
+            } catch (e: Exception) {
+                Log.e(TAG, "checkUpdate failed", e)
+                val msg = when {
+                    e is java.net.SocketTimeoutException -> "检查更新超时，请检查网络连接"
+                    e is java.net.UnknownHostException -> "无法访问 GitHub API: 网络连接失败"
+                    else -> "检查更新失败: ${e.message}"
+                }
+                promise.reject("NETWORK", msg)
+            }
+        }
+    }
+
+    private fun compareVersion(v1: String, v2: String): Int {
+        val parts1 = v1.split(".")
+        val parts2 = v2.split(".")
+        val maxLen = maxOf(parts1.size, parts2.size)
+        for (i in 0 until maxLen) {
+            val p1 = parts1.getOrNull(i)?.toIntOrNull() ?: 0
+            val p2 = parts2.getOrNull(i)?.toIntOrNull() ?: 0
+            if (p1 > p2) return 1
+            if (p1 < p2) return -1
+        }
+        return 0
+    }
 
     /**
      * 下载 APK 并覆盖安装
