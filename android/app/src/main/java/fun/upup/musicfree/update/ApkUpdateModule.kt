@@ -142,43 +142,68 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
 
     /**
      * 检查更新（原生 OkHttp 实现，直接下载静态 version.json）
-     * 不依赖任何 API，直接下载 Gitee Release 附件中的 version.json，
-     * 简单可靠，不受 API 限流/鉴权影响
+     * 多 URL 依次尝试，全部失败才报错。
+     * 静态文件方案，不依赖任何平台 API，简单稳定。
      */
     @ReactMethod
     fun checkUpdate(currentVersion: String, promise: Promise) {
-        val url = "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.0.6/version.json"
-        Log.d(TAG, "checkUpdate: currentVersion=$currentVersion")
+        val urls = listOf(
+            "https://gitee.com/ken794414/MusicFree-Source/raw/main/release/version.json",
+            "https://raw.githubusercontent.com/794414-web/MusicFree-Source/main/release/version.json",
+            "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@main/release/version.json"
+        )
+        Log.d(TAG, "checkUpdate: currentVersion=$currentVersion, urls=${urls.size}")
 
         val scope = CoroutineScope(Dispatchers.IO)
         scope.launch {
-            try {
-                val request = Request.Builder()
-                    .url(url)
-                    .header("Accept", "application/json")
-                    .header("User-Agent", "MusicFree")
-                    .build()
+            var lastError: String = ""
+            var bodyStr: String? = null
 
-                val response = httpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    response.close()
-                    if (response.code == 403) {
-                        promise.reject("403", "更新文件访问受限，请检查网络")
-                    } else if (response.code == 404) {
-                        promise.reject("404", "未找到更新文件")
-                    } else {
-                        promise.reject("${response.code}", "检查更新失败: HTTP ${response.code}")
+            for ((index, url) in urls.withIndex()) {
+                Log.d(TAG, "checkUpdate: try #${index + 1} $url")
+                try {
+                    val request = Request.Builder()
+                        .url(url)
+                        .header("Accept", "application/json")
+                        .header("User-Agent", "MusicFree")
+                        .build()
+
+                    val response = httpClient.newCall(request).execute()
+                    if (!response.isSuccessful) {
+                        val code = response.code
+                        response.close()
+                        lastError = "HTTP $code"
+                        Log.w(TAG, "checkUpdate: #${index + 1} failed HTTP $code")
+                        continue
                     }
-                    return@launch
-                }
 
-                val bodyStr = response.body?.string() ?: run {
+                    bodyStr = response.body?.string()
                     response.close()
-                    promise.reject("EMPTY", "检查更新失败: 空响应")
-                    return@launch
-                }
-                response.close()
+                    if (bodyStr.isNullOrBlank()) {
+                        lastError = "空响应"
+                        Log.w(TAG, "checkUpdate: #${index + 1} empty response")
+                        continue
+                    }
 
+                    Log.d(TAG, "checkUpdate: #${index + 1} success, ${bodyStr.length} bytes")
+                    break
+                } catch (e: Exception) {
+                    Log.e(TAG, "checkUpdate: #${index + 1} exception", e)
+                    lastError = when {
+                        e is java.net.SocketTimeoutException -> "超时"
+                        e is java.net.UnknownHostException -> "无法解析域名"
+                        e is java.net.ConnectException -> "连接失败"
+                        else -> e.message ?: "未知错误"
+                    }
+                }
+            }
+
+            if (bodyStr == null) {
+                promise.reject("NETWORK", "检查更新失败（所有源均不可用，最后错误：$lastError）")
+                return@launch
+            }
+
+            try {
                 val versionJson = JSONObject(bodyStr)
                 val latestVersion = versionJson.optString("version", "")
 
@@ -218,13 +243,8 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                 Log.d(TAG, "checkUpdate: update available $currentVersion -> $latestVersion")
                 promise.resolve(result)
             } catch (e: Exception) {
-                Log.e(TAG, "checkUpdate failed", e)
-                val msg = when {
-                    e is java.net.SocketTimeoutException -> "检查更新超时，请检查网络连接"
-                    e is java.net.UnknownHostException -> "无法访问更新服务器: 网络连接失败"
-                    else -> "检查更新失败: ${e.message}"
-                }
-                promise.reject("NETWORK", msg)
+                Log.e(TAG, "checkUpdate: parse response failed", e)
+                promise.reject("PARSE", "解析版本信息失败: ${e.message}")
             }
         }
     }
