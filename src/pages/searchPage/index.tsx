@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+﻿import React, { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
 import NavBar from "./components/navBar";
 import { useAtom, useSetAtom } from "jotai";
@@ -11,7 +11,7 @@ import {
 } from "./store/atoms";
 import HistoryPanel from "./components/historyPanel";
 import ResultPanel from "./components/resultPanel";
-import MusicBar from "@/components/musicBar";
+import MiniPlayer from "@/components/miniPlayer";
 import Loading from "@/components/base/loading";
 import { SafeAreaView } from "react-native-safe-area-context";
 import StatusBar from "@/components/base/statusBar";
@@ -46,7 +46,7 @@ export default function () {
                     )}
                 </View>
             </SafeAreaView>
-            <MusicBar />
+            <MiniPlayer />
         </SafeAreaView>
     );
 }

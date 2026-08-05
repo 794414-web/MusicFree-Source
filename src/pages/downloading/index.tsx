@@ -1,7 +1,7 @@
-import React from "react";
+﻿import React from "react";
 import StatusBar from "@/components/base/statusBar";
 import DownloadingList from "./downloadingList";
-import MusicBar from "@/components/musicBar";
+import MiniPlayer from "@/components/miniPlayer";
 import VerticalSafeAreaView from "@/components/base/verticalSafeAreaView";
 import globalStyle from "@/constants/globalStyle";
 import AppBar from "@/components/base/appBar";
@@ -15,7 +15,7 @@ export default function Downloading() {
             <StatusBar />
             <AppBar>{t("downloading.title")}</AppBar>
             <DownloadingList />
-            <MusicBar />
+            <MiniPlayer />
         </VerticalSafeAreaView>
     );
 }

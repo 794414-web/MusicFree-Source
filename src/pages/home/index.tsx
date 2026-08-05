@@ -2,7 +2,7 @@ import React from "react";
 import { StyleSheet } from "react-native";
 
 import NavBar from "./components/navBar";
-import MusicBar from "@/components/musicBar";
+import MiniPlayer from "@/components/miniPlayer";
 import { createDrawerNavigator } from "@react-navigation/drawer";
 import HomeDrawer from "./components/drawer";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -30,7 +30,7 @@ function Home() {
                     )}
                 </>
             </HorizontalSafeAreaView>
-            <MusicBar />
+            <MiniPlayer />
         </SafeAreaView>
     );
 }

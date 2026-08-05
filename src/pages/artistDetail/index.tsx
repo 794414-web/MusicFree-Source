@@ -1,6 +1,6 @@
-import React, { useEffect } from "react";
+﻿import React, { useEffect } from "react";
 import { StyleSheet, View } from "react-native";
-import MusicBar from "@/components/musicBar";
+import MiniPlayer from "@/components/miniPlayer";
 import Header from "./components/header";
 import Body from "./components/body";
 import { useAtom, useSetAtom } from "jotai";
@@ -59,7 +59,7 @@ export default function ArtistDetail() {
                 <Body />
             </View>
 
-            <MusicBar />
+            <MiniPlayer />
         </VerticalSafeAreaView>
     );
 }

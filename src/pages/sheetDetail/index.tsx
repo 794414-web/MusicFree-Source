@@ -1,6 +1,6 @@
-import React from "react";
+﻿import React from "react";
 import NavBar from "./components/navBar";
-import MusicBar from "@/components/musicBar";
+import MiniPlayer from "@/components/miniPlayer";
 import SheetMusicList from "./components/sheetMusicList";
 import StatusBar from "@/components/base/statusBar";
 import VerticalSafeAreaView from "@/components/base/verticalSafeAreaView";
@@ -12,7 +12,7 @@ export default function SheetDetail() {
             <StatusBar />
             <NavBar />
             <SheetMusicList />
-            <MusicBar />
+            <MiniPlayer />
         </VerticalSafeAreaView>
     );
 }
