@@ -141,13 +141,13 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
     override fun getName(): String = "ApkUpdate"
 
     /**
-     * 检查 GitHub 更新（原生 OkHttp 实现，绕过 RN JS 网络层）
+     * 检查 Gitee 更新（原生 OkHttp 实现，绕过 RN JS 网络层）
      * JS 层的 axios/fetch 在车机 RN 环境下不稳定，
-     * 因此直接在原生层使用已验证可用的 OkHttp 请求 GitHub API
+     * 因此直接在原生层使用已验证可用的 OkHttp 请求 Gitee API
      */
     @ReactMethod
     fun checkUpdate(currentVersion: String, promise: Promise) {
-        val url = "https://api.github.com/repos/794414-web/MusicFree-Source/releases/latest"
+        val url = "https://gitee.com/api/v5/repos/ken794414/MusicFree-Source/releases/latest"
         Log.d(TAG, "checkUpdate: currentVersion=$currentVersion")
 
         val scope = CoroutineScope(Dispatchers.IO)
@@ -155,7 +155,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
             try {
                 val request = Request.Builder()
                     .url(url)
-                    .header("Accept", "application/vnd.github+json")
+                    .header("Accept", "application/json")
                     .header("User-Agent", "MusicFree")
                     .build()
 
@@ -164,7 +164,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                     val bodyStr = response.body?.string() ?: ""
                     response.close()
                     if (response.code == 403) {
-                        promise.reject("403", "GitHub API 请求受限，请稍后再试")
+                        promise.reject("403", "Gitee API 请求受限，请稍后再试")
                     } else if (response.code == 404) {
                         promise.reject("404", "未找到可用版本")
                     } else {
@@ -246,7 +246,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                 Log.e(TAG, "checkUpdate failed", e)
                 val msg = when {
                     e is java.net.SocketTimeoutException -> "检查更新超时，请检查网络连接"
-                    e is java.net.UnknownHostException -> "无法访问 GitHub API: 网络连接失败"
+                    e is java.net.UnknownHostException -> "无法访问 Gitee API: 网络连接失败"
                     else -> "检查更新失败: ${e.message}"
                 }
                 promise.reject("NETWORK", msg)

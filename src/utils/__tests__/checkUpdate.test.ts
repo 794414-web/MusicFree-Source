@@ -21,7 +21,7 @@ const mockResult = (overrides: Record<string, any> = {}) => ({
     version: "1.0.4",
     changeLog: ["## 更新内容", "- 修复检查更新"],
     download: [
-        "https://github.com/794414-web/MusicFree-Source/releases/download/v1.0.4/app-universal-release.apk",
+        "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.0.4/MusicFree-1.0.4-universal.apk",
     ],
     ...overrides,
 });
@@ -37,7 +37,7 @@ describe("checkUpdate (native ApkUpdateModule)", () => {
         expect(result.updateInfo).toBeDefined();
         expect(result.updateInfo!.needUpdate).toBe(true);
         expect(result.updateInfo!.data.version).toBe("1.0.4");
-        expect(result.updateInfo!.data.download[0]).toContain("app-universal");
+        expect(result.updateInfo!.data.download[0]).toContain("universal");
     });
 
     test("无需更新 → 返回空对象", async () => {
@@ -53,12 +53,12 @@ describe("checkUpdate (native ApkUpdateModule)", () => {
 
     test("原生层抛错 → 返回 error", async () => {
         (ApkUpdateModule.checkUpdate as jest.Mock).mockRejectedValueOnce(
-            new Error("无法访问 GitHub API: 网络连接失败"),
+            new Error("无法访问 Gitee API: 网络连接失败"),
         );
 
         const result = await checkUpdate();
 
-        expect(result.error).toBe("无法访问 GitHub API: 网络连接失败");
+        expect(result.error).toBe("无法访问 Gitee API: 网络连接失败");
     });
 
     test("空 changeLog → 回退默认值", async () => {
