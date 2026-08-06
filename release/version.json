@@ -22,6 +22,8 @@
     "- 多网络环境（移动网络/弱网/车机）兼容性优化"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.0/MusicFree-1.2.0-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.0/MusicFree-1.2.0-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.0/MusicFree-1.2.0-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.0/release/MusicFree-1.2.0-universal.apk"
   ]
 }
