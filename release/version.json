@@ -1,17 +1,27 @@
 {
-  "version": "1.0.8",
+  "version": "1.2.0",
   "changeLog": [
-    "## v1.0.8 更新内容",
+    "## v1.2.0 正式版",
     "",
-    "### 修复手机闪退问题",
-    "- 关闭 R8 代码混淆和资源压缩",
-    "- 解决部分手机设备上 App 闪退打不开的问题",
+    "### APK 更新机制完善",
+    "- 检查更新三源兜底：Gitee → GitHub → jsDelivr CDN",
+    "- 双下载策略：系统 DownloadManager 自动切换 OkHttp 直连",
+    "- 双安装策略：PackageInstaller 失败自动回退 ACTION_VIEW",
+    "- 30 秒下载卡住检测，自动提示使用备用链接",
+    "- 适配 GitHub Release 多层重定向",
+    "- 详细错误码中文化提示",
     "",
-    "### 说明",
-    "- 模拟器测试正常",
-    "- 此版本为稳定版，请在手机上测试"
+    "### 哪吒车机适配",
+    "- 方向盘控制：上一曲/下一曲、播放/暂停、音量调节",
+    "- 浮窗交互：单击进入应用，双击播放/暂停",
+    "- 设置中可关闭方向盘控制（适合非车机设备）",
+    "",
+    "### 稳定性与兼容性",
+    "- 关闭 R8 代码混淆与资源压缩，修复手机闪退",
+    "- React Native 桥接层稳定性增强",
+    "- 多网络环境（移动网络/弱网/车机）兼容性优化"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.0.8/MusicFree-1.0.8-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.0/MusicFree-1.2.0-universal.apk"
   ]
 }
