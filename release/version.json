@@ -1,25 +1,26 @@
 {
-  "version": "1.2.3",
+  "version": "1.2.4",
   "changeLog": [
-    "## v1.2.3 下载修复版",
+    "## v1.2.4 输入法修复版",
     "",
-    "### 修复手机端下载问题",
+    "### 修复输入法问题",
+    "- 修复输入框和粘贴功能输入法加载崩溃的问题",
+    "- 将 TextInput 从 react-native-gesture-handler 迁移到 react-native",
+    "- 优化输入框焦点管理，延迟 focus 防止动画期间崩溃",
+    "",
+    "### 项目优化",
+    "- 清理无用测试文件、旧截图、废弃配置文件",
+    "- 删除 iOS 构建产物和调试文件",
+    "- 项目体积优化",
+    "",
+    "### v1.2.3 下载修复版",
     "- 修复 DownloadManager 在部分手机上卡住不下载的问题",
-    "- 优化 DownloadManager 回退 OkHttp 的触发逻辑",
     "- 增加 60 秒全局下载超时保护",
-    "- 增加异常状态（PENDING 等）15秒自动切换",
-    "- 下载失败自动切换备用链接",
-    "- 90秒下载总超时自动切换备用链接",
-    "- 30秒无进度自动切换备用链接",
-    "",
-    "### v1.2.2 功能回顾",
-    "- 全新敖丙 APP 图标",
-    "- 内存自动清理功能",
-    "- QQ 歌单多格式导入"
+    "- 90秒下载总超时自动切换备用链接"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.3/MusicFree-1.2.3-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.3/MusicFree-1.2.3-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.3/release/MusicFree-1.2.3-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.4/MusicFree-1.2.4-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.4/MusicFree-1.2.4-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.4/release/MusicFree-1.2.4-universal.apk"
   ]
 }
