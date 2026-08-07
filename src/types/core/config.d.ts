@@ -44,6 +44,11 @@ export interface IAppConfigProperties {
     // Steering Wheel Control（方向盘控制，仅 Android，哪吒车机适配）
     "basic.steeringWheelControl": boolean;
 
+    // Memory Auto Cleanup（内存自动清理）
+    "basic.autoMemoryCleanup": boolean;
+    "basic.memoryCleanupThreshold": number;
+    "basic.memoryCleanupInterval": number;
+
     // Builtin Plugins（内置音源版本标记）
     "basic.builtinPluginsVersion": string;
 

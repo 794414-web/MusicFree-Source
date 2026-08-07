@@ -310,11 +310,17 @@ async function getLyric(musicItem) {
 async function importMusicSheet(urlLike) {
     let id;
     if (!id) {
+        id = (urlLike.match(/https?:\/\/i2?\.y\.qq\.com\/n[23]\/(?:other\/)?pages\/details\/playlist\.html\?.*id=([0-9]+)/) || [])[1];
+    }
+    if (!id) {
         id = (urlLike.match(/https?:\/\/i\.y\.qq\.com\/n2\/m\/share\/details\/taoge\.html\?.*id=([0-9]+)/) || [])[1];
     }
     if (!id) {
-        id = (urlLike.match(/https?:\/\/y\.qq\.com\/n\/ryqq\/playlist\/([0-9]+)/) ||
+        id = (urlLike.match(/https?:\/\/y\.qq\.com\/n\/ryqq(?:_v2)?\/playlist\/([0-9]+)/) ||
             [])[1];
+    }
+    if (!id) {
+        id = (urlLike.match(/id=([0-9]+)/) || [])[1];
     }
     if (!id) {
         id = (urlLike.match(/^(\d+)$/) || [])[1];

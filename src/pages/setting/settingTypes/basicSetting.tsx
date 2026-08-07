@@ -16,6 +16,7 @@ import { FloatingWindowModule } from "@/native/floatingWindow";
 import { SteeringWheelModule } from "@/native/nezha";
 import { AppConfigPropertyKey } from "@/types/core/config";
 import { clearCache, getCacheSize, sizeFormatter } from "@/utils/fileUtils";
+import { manualCleanup, updateCleanupConfig } from "@/utils/memoryMonitor";
 import { clearLog, getErrorLogContent } from "@/utils/log";
 import { qualityKeys } from "@/utils/qualities";
 import rpx from "@/utils/rpx";
@@ -132,6 +133,9 @@ export default function BasicSetting() {
     const showExitOnNotification = useAppConfig("basic.showExitOnNotification");
     const musicOrderInLocalSheet = useAppConfig("basic.musicOrderInLocalSheet");
     const tryChangeSourceWhenPlayFail = useAppConfig("basic.tryChangeSourceWhenPlayFail");
+    const autoMemoryCleanup = useAppConfig("basic.autoMemoryCleanup");
+    const memoryCleanupThreshold = useAppConfig("basic.memoryCleanupThreshold");
+    const memoryCleanupInterval = useAppConfig("basic.memoryCleanupInterval");
 
     const { t } = useI18N();
 
@@ -522,6 +526,80 @@ export default function BasicSetting() {
                                 refreshCacheSize();
                             },
                         });
+                    },
+                },
+            ],
+        },
+        {
+            title: "内存自动清理",
+            data: [
+                createSwitch(
+                    "启用自动清理",
+                    "basic.autoMemoryCleanup",
+                    autoMemoryCleanup ?? true,
+                    val => {
+                        Config.setConfig("basic.autoMemoryCleanup", val);
+                        updateCleanupConfig({ enabled: val });
+                    },
+                ),
+                {
+                    title: "清理阈值",
+                    right: (
+                        <ThemeText style={styles.centerText}>
+                            {memoryCleanupThreshold ?? 400}MB
+                        </ThemeText>
+                    ),
+                    onPress() {
+                        showDialog("RadioDialog", {
+                            title: "清理阈值 (超过时自动清理)",
+                            content: [300, 400, 500, 600].map(v => ({
+                                label: v + "MB",
+                                value: v,
+                            })),
+                            onOk(val) {
+                                Config.setConfig(
+                                    "basic.memoryCleanupThreshold",
+                                    val,
+                                );
+                                updateCleanupConfig({ thresholdMB: val });
+                            },
+                        });
+                    },
+                },
+                {
+                    title: "定时清理间隔",
+                    right: (
+                        <ThemeText style={styles.centerText}>
+                            {memoryCleanupInterval ?? 30} 分钟
+                        </ThemeText>
+                    ),
+                    onPress() {
+                        showDialog("RadioDialog", {
+                            title: "定时清理间隔",
+                            content: [
+                                { label: "每 15 分钟", value: 15 },
+                                { label: "每 30 分钟", value: 30 },
+                                { label: "每 1 小时", value: 60 },
+                                { label: "每 2 小时", value: 120 },
+                            ],
+                            onOk(val) {
+                                Config.setConfig(
+                                    "basic.memoryCleanupInterval",
+                                    val,
+                                );
+                                updateCleanupConfig({ intervalMin: val });
+                            },
+                        });
+                    },
+                },
+                {
+                    title: "立即清理一次",
+                    right: null,
+                    onPress: async () => {
+                        Toast.success("开始清理...");
+                        await manualCleanup();
+                        Toast.success("清理完成");
+                        refreshCacheSize();
                     },
                 },
             ],

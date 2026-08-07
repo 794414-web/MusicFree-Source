@@ -2,7 +2,7 @@ import "react-native-get-random-values";
 
 import { getCurrentDialog, showDialog } from "@/components/dialogs/useDialog.ts";
 import cacheCleanup from "@/utils/periodicCacheCleanup";
-import { startMemoryMonitor } from "@/utils/memoryMonitor";
+import { startMemoryMonitor, updateCleanupConfig, getCleanupConfig } from "@/utils/memoryMonitor";
 import { ImgAsset } from "@/constants/assetsConst";
 import { emptyFunction, localPluginHash, supportLocalMediaType } from "@/constants/commonConst";
 import pathConst from "@/constants/pathConst";
@@ -54,6 +54,66 @@ TrackPlayer.injectDependencies(Config, musicHistory, PluginManager);
 downloader.injectDependencies(Config, PluginManager);
 lyricManager.injectDependencies(TrackPlayer, Config, PluginManager);
 MusicSheet.injectDependencies(Config);
+
+/**
+ * 设置低内存占用默认配置
+ * 仅对尚未设置的配置项设置默认值，不覆盖用户已有设置
+ */
+function setupLowMemoryDefaults() {
+    const defaults: Array<[string, any]> = [
+        ["basic.lazyLoadPlugin", true],
+        ["basic.maxCacheSize", 100 * 1024 * 1024],
+        ["basic.autoUpdatePlugin", false],
+        ["basic.maxHistoryLen", 20],
+        ["basic.musicDetailAwake", false],
+        ["basic.autoPlayWhenAppStart", false],
+        ["basic.notInterrupt", true],
+        ["basic.tryChangeSourceWhenPlayFail", false],
+        ["basic.autoStopWhenError", false],
+        ["basic.showExitOnNotification", false],
+        ["basic.defaultPlayQuality", "standard"],
+        ["basic.playQualityOrder", "desc"],
+        ["basic.defaultDownloadQuality", "standard"],
+        ["basic.downloadQualityOrder", "desc"],
+        ["basic.maxDownload", 1],
+        ["debug.errorLog", false],
+        ["debug.traceLog", false],
+        ["debug.devLog", false],
+        ["lyric.showStatusBarLyric", false],
+        ["lyric.autoSearchLyric", false],
+        ["basic.floatingWindow", false],
+        ["basic.steeringWheelControl", false],
+        ["basic.associateLyricType", "input"],
+        ["basic.autoMemoryCleanup", true],
+        ["basic.memoryCleanupThreshold", 400],
+        ["basic.memoryCleanupInterval", 30],
+    ];
+
+    defaults.forEach(([key, value]) => {
+        if (Config.getConfig(key as any) === undefined) {
+            Config.setConfig(key as any, value);
+        }
+    });
+
+    console.log("已应用低内存默认配置");
+}
+
+/**
+ * 初始化内存自动清理配置
+ */
+function initMemoryCleanupConfig() {
+    const enabled = Config.getConfig("basic.autoMemoryCleanup");
+    const threshold = Config.getConfig("basic.memoryCleanupThreshold");
+    const interval = Config.getConfig("basic.memoryCleanupInterval");
+
+    if (enabled !== undefined || threshold !== undefined || interval !== undefined) {
+        updateCleanupConfig({
+            enabled: enabled ?? true,
+            thresholdMB: threshold ?? 400,
+            intervalMin: interval ?? 30,
+        });
+    }
+}
 
 
 async function bootstrapImpl() {
@@ -114,6 +174,12 @@ async function bootstrapImpl() {
     ]);
     trace("配置初始化完成");
     logger.mark("配置初始化完成");
+
+    // 设置低内存占用默认配置
+    setupLowMemoryDefaults();
+
+    // 初始化内存自动清理配置
+    initMemoryCleanupConfig();
 
     // 安装内置音源（在插件加载之前）
     try {
