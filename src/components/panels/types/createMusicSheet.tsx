@@ -2,10 +2,9 @@ import { fontSizeConst } from "@/constants/uiConst";
 import useColors from "@/hooks/useColors";
 import rpx, { vmax } from "@/utils/rpx";
 import React, { useState } from "react";
-import { StyleSheet, View, TouchableOpacity } from "react-native";
+import { StyleSheet, View, TouchableOpacity, TextInput } from "react-native";
 
 import MusicSheet from "@/core/musicSheet";
-import { TextInput } from "react-native-gesture-handler";
 import Clipboard from "@react-native-clipboard/clipboard";
 import Toast from "@/utils/toast";
 import ThemeText from "@/components/base/themeText";

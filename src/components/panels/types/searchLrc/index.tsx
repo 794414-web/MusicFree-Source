@@ -1,12 +1,11 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View, TextInput } from "react-native";
 import rpx, { vmax, vw } from "@/utils/rpx";
 
 import { fontSizeConst, fontWeightConst } from "@/constants/uiConst";
 import Button from "@/components/base/textButton.tsx";
 import useColors from "@/hooks/useColors";
 import PanelBase from "../../base/panelBase";
-import { TextInput } from "react-native-gesture-handler";
 import useSearchLrc from "./useSearchLrc";
 import PluginManager from "@/core/pluginManager";
 import { SceneMap, TabBar, TabView } from "react-native-tab-view";

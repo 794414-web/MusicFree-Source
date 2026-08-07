@@ -1,11 +1,11 @@
-import React, { useState } from "react";
-import { StyleSheet, View, TouchableOpacity } from "react-native";
+import React, { useState, useRef, useEffect } from "react";
+import { StyleSheet, View, TouchableOpacity, TextInput } from "react-native";
 import rpx, { vh } from "@/utils/rpx";
 import { fontSizeConst } from "@/constants/uiConst";
 import useColors from "@/hooks/useColors";
 
 import ThemeText from "@/components/base/themeText";
-import { ScrollView, TextInput } from "react-native-gesture-handler";
+import { ScrollView } from "react-native-gesture-handler";
 import Clipboard from "@react-native-clipboard/clipboard";
 import Toast from "@/utils/toast";
 import PanelBase from "../base/panelBase";
@@ -38,6 +38,8 @@ export default function SimpleInput(props: ISimpleInputProps) {
 
     const [input, setInput] = useState(defaultValue ?? "");
     const colors = useColors();
+    const inputRef = useRef<TextInput>(null);
+    const hasFocusedRef = useRef(false);
 
     async function handlePaste() {
         try {
@@ -57,7 +59,12 @@ export default function SimpleInput(props: ISimpleInputProps) {
         <PanelBase
             keyboardAvoidBehavior="padding"
             height={vh(60)}
-            renderBody={() => (
+            renderBody={(loading) => {
+                if (!loading && autoFocus && !hasFocusedRef.current) {
+                    hasFocusedRef.current = true;
+                    setTimeout(() => inputRef.current?.focus(), 100);
+                }
+                return (
                 <View style={styles.container}>
                     <ScrollView
                         style={styles.scrollArea}
@@ -77,9 +84,10 @@ export default function SimpleInput(props: ISimpleInputProps) {
 
                         <View style={styles.inputRow}>
                             <TextInput
+                                ref={inputRef}
                                 value={input}
                                 accessible
-                                autoFocus={autoFocus}
+                                autoFocus={autoFocus && !loading}
                                 accessibilityLabel={t("panel.simpleInput.inputLabel")}
                                 accessibilityHint={placeholder}
                                 onChangeText={_ => {
@@ -174,7 +182,7 @@ export default function SimpleInput(props: ISimpleInputProps) {
                         </TouchableOpacity>
                     </View>
                 </View>
-            )}
+            );}}
         />
     );
 }
