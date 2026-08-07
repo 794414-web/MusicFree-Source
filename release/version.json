@@ -1,7 +1,7 @@
 {
-  "version": "1.2.5",
+  "version": "1.2.7",
   "changeLog": [
-    "## v1.2.5 输入法修复版",
+    "## v1.2.7 输入法修复版",
     "",
     "### 修复输入法问题",
     "- 修复输入框和粘贴功能输入法加载崩溃的问题",
@@ -12,6 +12,7 @@
     "- 清理无用测试文件、旧截图、废弃配置文件",
     "- 删除 iOS 构建产物和调试文件",
     "- 项目体积优化",
+    "- versionCode 改为日期时间格式 (yyyyMMddHHmm)",
     "",
     "### v1.2.3 下载修复版",
     "- 修复 DownloadManager 在部分手机上卡住不下载的问题",
@@ -19,8 +20,8 @@
     "- 90秒下载总超时自动切换备用链接"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.5/MusicFree-1.2.5-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.5/MusicFree-1.2.5-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.5/release/MusicFree-1.2.5-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.7/MusicFree-1.2.7-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.7/MusicFree-1.2.7-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.7/release/MusicFree-1.2.7-universal.apk"
   ]
 }

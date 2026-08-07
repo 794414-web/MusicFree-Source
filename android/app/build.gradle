@@ -100,21 +100,19 @@ static def getVersion() {
     return packageJson["version"]
 }
 
-// static def versionStringToCode(String version) {
-//     def parts = version.split('\\.')
-//     def versionCode = 0
-//     def multiplier = 1000000
-//
-//     parts.each { part ->
-//         versionCode += part.toInteger() * multiplier
-//         multiplier /= 1000
-//     }
-//
-//     return versionCode.intValue()
-// }
+// 基于日期生成 versionCode: yyyyMMdd (8位)
+static def getVersionCode() {
+    def now = new Date()
+    def cal = Calendar.getInstance()
+    cal.setTime(now)
+    def year = cal.get(Calendar.YEAR)
+    def month = String.format('%02d', cal.get(Calendar.MONTH) + 1)
+    def day = String.format('%02d', cal.get(Calendar.DAY_OF_MONTH))
+    return Integer.parseInt("${year}${month}${day}")
+}
 
 def appVersion = getVersion()
-def appVersionCode = 10250
+def appVersionCode = getVersionCode()
 
 
 android {
