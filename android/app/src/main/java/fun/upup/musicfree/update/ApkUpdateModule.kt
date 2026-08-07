@@ -61,6 +61,9 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
     private var fallbackTotalBytes = 0L
     private var lastProgressReportTime = 0L
     private var noProgressCount = 0
+    private var downloadStartTime = 0L
+    private var dmTotalTimeoutCount = 0
+    private val DOWNLOAD_MAX_TIME_MS = 60_000L
     private val httpClient by lazy {
         OkHttpClient.Builder()
             .followRedirects(true)
@@ -274,6 +277,8 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
         fallbackTotalBytes = 0L
         lastProgressReportTime = System.currentTimeMillis()
         noProgressCount = 0
+        downloadStartTime = System.currentTimeMillis()
+        dmTotalTimeoutCount = 0
         currentDownloadUrl = url
 
         if (url.isBlank()) {
@@ -614,6 +619,29 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                 return
             }
 
+            // 全局超时检测：DownloadManager 下载超过 60 秒，强制切换 OkHttp
+            val elapsed = System.currentTimeMillis() - downloadStartTime
+            if (elapsed > DOWNLOAD_MAX_TIME_MS) {
+                Log.w(TAG, "DownloadManager 总超时 (${elapsed}ms)，强制切换 OkHttp")
+                val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+                try {
+                    dm.remove(downloadId)
+                } catch (_: Exception) {}
+                try {
+                    reactContext.unregisterReceiver(downloadCompleteReceiver)
+                    downloadReceiverRegistered = false
+                } catch (_: Exception) {}
+                useOkHttpFallback = true
+                val url = getDownloadUrl()
+                if (url != null) {
+                    startDirectHttpDownload(url)
+                    promise.resolve(0)
+                    return
+                }
+                promise.resolve(-1)
+                return
+            }
+
             val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
             val query = DownloadManager.Query().setFilterById(downloadId)
             val cursor: Cursor = dm.query(query) ?: run {
@@ -623,28 +651,24 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
             cursor.use {
                 if (it.moveToFirst()) {
                     val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                    Log.d(TAG, "DM status=$status")
+                    val downloaded = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                    val total = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                    Log.d(TAG, "DM status=$status, downloaded=$downloaded, total=$total")
 
                     when (status) {
                         DownloadManager.STATUS_RUNNING -> {
-                            val downloaded = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-                            val total = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-
-                            // 检测是否卡住：进度为 0 且已经过了一段时间
                             if (downloaded == 0L) {
                                 noProgressCount++
                                 if (noProgressCount >= 20) {
                                     Log.w(TAG, "DownloadManager 卡住（进度0持续10秒），回退到 OkHttp")
                                     noProgressCount = 0
-                                    val url = getDownloadUrl()
-                                    if (url != null) {
-                                        startDirectHttpDownload(url)
-                                        promise.resolve(0)
-                                        return
-                                    }
+                                    switchToOkHttp(dm)
+                                    promise.resolve(0)
+                                    return
                                 }
                             } else {
                                 noProgressCount = 0
+                                dmTotalTimeoutCount = 0
                             }
 
                             if (total > 0) {
@@ -660,12 +684,9 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                             if (noProgressCount >= 10) {
                                 Log.w(TAG, "DownloadManager 暂停超过5秒，回退到 OkHttp")
                                 noProgressCount = 0
-                                val url = getDownloadUrl()
-                                if (url != null) {
-                                    startDirectHttpDownload(url)
-                                    promise.resolve(0)
-                                    return
-                                }
+                                switchToOkHttp(dm)
+                                promise.resolve(0)
+                                return
                             }
                             promise.resolve(0)
                         }
@@ -679,6 +700,17 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                             promise.resolve(100)
                         }
                         else -> {
+                            // 包括 STATUS_PENDING(1) 等未知状态
+                            // 这些状态下 DownloadManager 可能永远不会开始下载
+                            dmTotalTimeoutCount++
+                            Log.w(TAG, "DownloadManager 异常状态: $status, count=$dmTotalTimeoutCount")
+                            if (dmTotalTimeoutCount >= 30) {
+                                Log.w(TAG, "DownloadManager 异常状态持续15秒，回退到 OkHttp")
+                                dmTotalTimeoutCount = 0
+                                switchToOkHttp(dm)
+                                promise.resolve(0)
+                                return
+                            }
                             promise.resolve(0)
                         }
                     }
@@ -689,6 +721,25 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
         } catch (e: Exception) {
             Log.e(TAG, "getDownloadProgress 异常", e)
             promise.resolve(-1)
+        }
+    }
+
+    /**
+     * 从 DownloadManager 切换到 OkHttp 下载
+     */
+    private fun switchToOkHttp(dm: DownloadManager) {
+        try {
+            dm.remove(downloadId)
+            Log.d(TAG, "已取消 DownloadManager 下载: $downloadId")
+        } catch (_: Exception) {}
+        try {
+            reactContext.unregisterReceiver(downloadCompleteReceiver)
+            downloadReceiverRegistered = false
+        } catch (_: Exception) {}
+        useOkHttpFallback = true
+        val url = getDownloadUrl()
+        if (url != null) {
+            startDirectHttpDownload(url)
         }
     }
 

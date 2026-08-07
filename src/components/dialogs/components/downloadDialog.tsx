@@ -60,7 +60,7 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
     }, []);
 
     /** 直接下载并安装 */
-    const handleDownloadAndInstall = async (url: string) => {
+    const handleDownloadAndInstall = async (url: string, isBackup = false) => {
         if (downloading) return;
         setDownloading(true);
         setProgress(0);
@@ -79,6 +79,8 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
             let stalledCount = 0;
             let lastProgress = -1;
             let failedReported = false;
+            const startTime = Date.now();
+            const TOTAL_TIMEOUT_MS = 90_000;
 
             timerRef.current = setInterval(async () => {
                 try {
@@ -94,6 +96,11 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                             }
                             const err = await ApkUpdateModule.getLastError();
                             Toast.warn("下载失败: " + (err || "未知错误"));
+                            // 主链接失败，自动尝试备用链接
+                            if (!isBackup && backUrl) {
+                                Toast.warn("正在尝试备用链接...");
+                                setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
+                            }
                         }
                         return;
                     }
@@ -110,15 +117,35 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                         return;
                     }
 
+                    // 总超时检测
+                    if (Date.now() - startTime > TOTAL_TIMEOUT_MS) {
+                        if (timerRef.current) {
+                            clearInterval(timerRef.current);
+                            timerRef.current = null;
+                        }
+                        setDownloading(false);
+                        Toast.warn("下载超时，尝试备用链接...");
+                        if (!isBackup && backUrl) {
+                            setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
+                        }
+                        return;
+                    }
+
                     if (p === lastProgress) {
                         stalledCount++;
+                        // 30秒无变化则尝试备用链接
                         if (stalledCount >= 60) {
                             if (timerRef.current) {
                                 clearInterval(timerRef.current);
                                 timerRef.current = null;
                             }
                             setDownloading(false);
-                            Toast.warn("下载速度过慢，请尝试备用链接");
+                            if (!isBackup && backUrl) {
+                                Toast.warn("下载卡住，切换备用链接...");
+                                setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
+                            } else {
+                                Toast.warn("下载速度过慢，请手动尝试备用链接");
+                            }
                         }
                     } else {
                         stalledCount = 0;
@@ -130,6 +157,11 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
             setDownloading(false);
             const msg = e?.message || "未知错误";
             Toast.warn("下载启动失败: " + msg);
+            // 主链接启动失败，自动尝试备用链接
+            if (!isBackup && backUrl) {
+                Toast.warn("正在尝试备用链接...");
+                setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
+            }
         }
     };
 
