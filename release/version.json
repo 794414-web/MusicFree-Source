@@ -1,18 +1,12 @@
 {
-  "version": "1.2.9",
+  "version": "1.2.8",
   "changeLog": [
-    "## v1.2.9 哪吒互联适配版",
+    "## v1.2.8 车机全屏通知 + 输入法修复版",
     "",
-    "### 哪吒互联 (NetA) 集成",
-    "- 适配哪吒互联「接口服务」元数据 API",
-    "- 通过 AF_UNIX Socket 获取歌词和封面数据",
-    "- 歌词获取兜底链路：插件源 → 自动搜索 → NetA 元数据服务",
-    "- 封面 URL 两级缓存（内存 + MMKV），24小时有效期",
-    "- 支持 /v1/health、/v1/lyric、/v1/cover 端点",
-    "",
-    "### 全屏通知增强",
-    "- 新增 FullscreenNotification 模块",
-    "- 支持全屏通知状态监听与控制",
+    "### 新增车机全屏通知兼容",
+    "- 支持 FULLSCREEN_ON / FULLSCREEN_OFF 广播",
+    "- 车机系统可控制应用全屏显示状态",
+    "- 集成 FullscreenNotificationModule 原生模块",
     "",
     "### 修复输入法问题",
     "- 修复输入框和粘贴功能输入法加载崩溃的问题",
@@ -20,18 +14,12 @@
     "- 优化输入框焦点管理，延迟 focus 防止动画期间崩溃",
     "",
     "### 项目优化",
-    "- 清理无用测试文件、旧截图、废弃配置文件",
-    "- 删除 iOS 构建产物和调试文件",
-    "- 项目体积优化",
-    "",
-    "### v1.2.3 下载修复版",
-    "- 修复 DownloadManager 在部分手机上卡住不下载的问题",
-    "- 增加 60 秒全局下载超时保护",
-    "- 90秒下载总超时自动切换备用链接"
+    "- versionCode 改为日期格式 (yyyyMMdd)",
+    "- 清理无用测试文件、旧截图、废弃配置文件"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.9/MusicFree-1.2.9-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.9/MusicFree-1.2.9-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.9/release/MusicFree-1.2.9-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.8/MusicFree-1.2.8-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.8/MusicFree-1.2.8-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.8/release/MusicFree-1.2.8-universal.apk"
   ]
 }
