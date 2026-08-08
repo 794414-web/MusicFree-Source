@@ -3,10 +3,11 @@ import { NativeModule, NativeModules, Platform, DeviceEventEmitter } from 'react
 /**
  * 哪吒车机适配模块 TypeScript 接口
  *
- * 包含三个原生模块：
+ * 包含四个原生模块：
  * - NezhaTheme: 主题跟随系统（日间/夜间）
  * - SteeringWheel: 方向盘媒体按键
  * - NezhaMultiDisplay: 多屏检测
+ * - FullscreenNotification: 车机全屏通知控制
  */
 
 // ======================== 主题跟随 ========================
@@ -132,6 +133,42 @@ export const NezhaMultiDisplayModule = {
     },
 };
 
+// ======================== 全屏通知控制 ========================
+
+interface IFullscreenNotificationModule extends NativeModule {
+    startListening: () => Promise<boolean>;
+    stopListening: () => Promise<boolean>;
+    getCurrentState: () => Promise<string>;
+    isSupported: () => Promise<boolean>;
+    addListener: (eventName: string) => void;
+    removeListeners: (count: number) => void;
+}
+
+const FullscreenNotificationNative: IFullscreenNotificationModule | undefined = NativeModules.FullscreenNotification;
+
+function isFullscreenNotificationSupported(): boolean {
+    return Platform.OS === 'android' && !!FullscreenNotificationNative;
+}
+
+export const FullscreenNotificationModule = {
+    isSupported: isFullscreenNotificationSupported,
+
+    startListening: (): Promise<boolean> => {
+        if (!FullscreenNotificationNative) return Promise.resolve(false);
+        return FullscreenNotificationNative.startListening().catch(() => false);
+    },
+
+    stopListening: (): Promise<boolean> => {
+        if (!FullscreenNotificationNative) return Promise.resolve(false);
+        return FullscreenNotificationNative.stopListening().catch(() => false);
+    },
+
+    getCurrentState: (): Promise<string> => {
+        if (!FullscreenNotificationNative) return Promise.resolve('off');
+        return FullscreenNotificationNative.getCurrentState().catch(() => 'off');
+    },
+};
+
 // ======================== 事件类型 ========================
 
 /** 主题变化事件参数 */
@@ -144,6 +181,12 @@ export interface NezhaThemeEvent {
 export interface SteeringWheelKeyEvent {
     keyCode: number;
     action: 'previous' | 'next' | 'playPause' | 'play' | 'pause' | 'volumeUp' | 'volumeDown' | string;
+}
+
+/** 全屏通知状态事件参数 */
+export interface FullscreenStateEvent {
+    state: 'on' | 'off';
+    action: 'enterFullscreen' | 'exitFullscreen';
 }
 
 // ======================== 事件订阅辅助 ========================
@@ -163,5 +206,14 @@ export function onNezhaThemeChange(callback: (event: NezhaThemeEvent) => void): 
  */
 export function onSteeringWheelKey(callback: (event: SteeringWheelKeyEvent) => void): () => void {
     const subscription = DeviceEventEmitter.addListener('steeringWheelMediaKey', callback);
+    return () => subscription.remove();
+}
+
+/**
+ * 监听全屏通知状态变化
+ * @returns 取消监听函数
+ */
+export function onFullscreenStateChange(callback: (event: FullscreenStateEvent) => void): () => void {
+    const subscription = DeviceEventEmitter.addListener('fullscreenStateChanged', callback);
     return () => subscription.remove();
 }

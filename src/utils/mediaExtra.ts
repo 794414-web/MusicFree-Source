@@ -20,7 +20,9 @@ interface IMediaExtraProperties {
     /** 歌词偏移 */
     lyricOffset?: number;
     /** 关联歌词 */
-    associatedLrc?: ICommon.IMediaBase
+    associatedLrc?: ICommon.IMediaBase;
+    /** NetA 封面 URL 缓存 */
+    netaCoverUrl?: string;
 }
 
 

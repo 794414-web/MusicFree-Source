@@ -2,21 +2,25 @@ import TrackPlayer from "@/core/trackPlayer";
 import {
     NezhaThemeModule,
     SteeringWheelModule,
+    FullscreenNotificationModule,
     onNezhaThemeChange,
     onSteeringWheelKey,
+    onFullscreenStateChange,
 } from "@/native/nezha";
 import Theme from "@/core/theme";
 import { useEffect, useRef } from "react";
 import Config, { useAppConfig } from "@/core/appConfig";
 import { musicIsPaused } from "@/utils/trackUtils";
+import { setWindowFullscreen, exitWindowFullscreen } from "@/utils/fullscreenHelper";
 
 /**
  * 哪吒车机适配 Hook
  *
- * 集成三个功能：
+ * 集成四个功能：
  * 1. 主题跟随系统 - 读取哪吒系统主题属性，自动切换日间/夜间模式
  * 2. 方向盘媒体按键 - 接收方向盘按键广播，控制播放/暂停/上一首/下一首
  * 3. 多屏检测 - 模块已注册，供悬浮窗模块后续使用
+ * 4. 全屏通知控制 - 响应 FULLSCREEN_ON/OFF 广播，控制全屏显示
  *
  * 在 BootstrapComponent 中调用，随应用生命周期运行
  *
@@ -26,6 +30,7 @@ import { musicIsPaused } from "@/utils/trackUtils";
 export function useNezhaCarAdapter() {
     const unsubThemeRef = useRef<(() => void) | null>(null);
     const unsubSteeringRef = useRef<(() => void) | null>(null);
+    const unsubFullscreenRef = useRef<(() => void) | null>(null);
     // 默认开启（undefined 视为 true），保证哪吒车机用户开箱即用
     const enableSteeringWheel = useAppConfig("basic.steeringWheelControl") ?? true;
 
@@ -94,6 +99,21 @@ export function useNezhaCarAdapter() {
             });
         }
 
+        // ========== 3. 全屏通知控制 ==========
+        // 监听车机 FULLSCREEN_ON / FULLSCREEN_OFF 广播
+        if (FullscreenNotificationModule.isSupported()) {
+            FullscreenNotificationModule.startListening();
+
+            unsubFullscreenRef.current = onFullscreenStateChange((event) => {
+                if (!mounted) return;
+                if (event.state === "on") {
+                    setWindowFullscreen();
+                } else {
+                    exitWindowFullscreen();
+                }
+            });
+        }
+
         // ========== 清理 ==========
         return () => {
             mounted = false;
@@ -105,11 +125,15 @@ export function useNezhaCarAdapter() {
                 unsubSteeringRef.current();
                 unsubSteeringRef.current = null;
             }
+            if (unsubFullscreenRef.current) {
+                unsubFullscreenRef.current();
+                unsubFullscreenRef.current = null;
+            }
             NezhaThemeModule.stopListening();
-            // 仅在方控启用时停止监听，避免对未启动的模块调用
             if (enableSteeringWheel) {
                 SteeringWheelModule.stopListening();
             }
+            FullscreenNotificationModule.stopListening();
         };
     }, [enableSteeringWheel]);
 }

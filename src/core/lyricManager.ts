@@ -17,6 +17,7 @@ import { unlink, writeFile } from "react-native-fs";
 import RNTrackPlayer, { Event } from "react-native-track-player";
 import { TrackPlayerEvents } from "@/core.defination/trackPlayer";
 import { IPluginManager } from "@/types/core/pluginManager";
+import NetAMetadata from "@/native/neta";
 
 
 interface ILyricState {
@@ -315,6 +316,16 @@ class LyricManager implements IInjectable {
                 return;
             }
 
+            // 如果源不存在，尝试从 NetA 获取（哪吒互联元数据服务）
+            if (!lrcSource && NetAMetadata.isSupported()) {
+                lrcSource = await this.fetchLyricFromNetA(currentMusicItem);
+            }
+
+            // 切换到其他歌曲了, 直接返回
+            if (!this.trackPlayer.isCurrentMusic(currentMusicItem)) {
+                return;
+            }
+
             // 如果源不存在，恢复默认设置
             if (!lrcSource) {
                 this.setLyricAsNoLyricState();
@@ -428,6 +439,32 @@ class LyricManager implements IInjectable {
         }
 
         return null;
+    }
+
+    /**
+     * 从 NetA 哪吒互联元数据服务获取歌词
+     * @param musicItem 音乐项
+     * @returns 歌词源或 null
+     */
+    private async fetchLyricFromNetA(musicItem: IMusic.IMusicItem): Promise<ILyric.ILyricSource | null> {
+        if (!musicItem?.title || !NetAMetadata.isSupported()) {
+            return null;
+        }
+
+        try {
+            const title = musicItem.alias || musicItem.title;
+            const artist = musicItem.artist || "";
+            const result = await NetAMetadata.getLyric(title, artist);
+
+            if (result && result.rawLrc) {
+                return {
+                    rawLrc: result.rawLrc,
+                };
+            }
+            return null;
+        } catch {
+            return null;
+        }
     }
 
 }
