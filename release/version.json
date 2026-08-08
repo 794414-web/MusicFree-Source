@@ -1,7 +1,7 @@
 {
-  "version": "1.2.8",
+  "version": "1.2.9",
   "changeLog": [
-    "## v1.2.8 车机全屏通知 + 输入法修复版",
+    "## v1.2.9 车机全屏通知 + 输入法修复版",
     "",
     "### 新增车机全屏通知兼容",
     "- 支持 FULLSCREEN_ON / FULLSCREEN_OFF 广播",
@@ -18,8 +18,8 @@
     "- 清理无用测试文件、旧截图、废弃配置文件"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.8/MusicFree-1.2.8-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.8/MusicFree-1.2.8-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.8/release/MusicFree-1.2.8-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.9/MusicFree-1.2.9-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.9/MusicFree-1.2.9-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.9/release/MusicFree-1.2.9-universal.apk"
   ]
 }
