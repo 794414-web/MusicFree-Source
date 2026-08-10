@@ -12,8 +12,12 @@ export interface IFloatingWindowModule extends NativeModule {
   requestPermission: () => Promise<boolean>;
   /** 显示悬浮窗，传入初始宽高（px），0 表示使用默认值 */
   show: (initialWidth: number, initialHeight: number) => Promise<boolean>;
-  /** 隐藏悬浮窗 */
+  /** 隐藏悬浮窗（保留实例，可快速恢复） */
   hide: () => Promise<boolean>;
+  /** 彻底销毁悬浮窗（清理所有资源） */
+  destroy: () => Promise<boolean>;
+  /** 查询悬浮窗是否可见 */
+  isVisible: () => Promise<boolean>;
   /** 更新悬浮窗歌词文本 */
   setLyric: (text: string) => Promise<boolean>;
   /** 更新播放状态：true=播放中显示暂停图标，false=暂停显示播放图标 */
@@ -73,6 +77,12 @@ export const FloatingWindowModule = {
     safeCall(() => FloatingWindow!.show(initialWidth, initialHeight), false),
 
   hide: (): Promise<boolean> => safeCall(() => FloatingWindow!.hide(), false),
+
+  destroy: (): Promise<boolean> =>
+    safeCall(() => FloatingWindow!.destroy(), false),
+
+  isVisible: (): Promise<boolean> =>
+    safeCall(() => FloatingWindow!.isVisible(), false),
 
   setLyric: (text: string): Promise<boolean> =>
     safeCall(() => FloatingWindow!.setLyric(text), false),

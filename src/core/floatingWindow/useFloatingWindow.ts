@@ -236,6 +236,18 @@ export const FloatingWindowController = {
     }
     await FloatingWindowModule.hide();
   },
+  async destroy() {
+    if (Platform.OS !== 'android') {
+      return;
+    }
+    await FloatingWindowModule.destroy();
+  },
+  async isVisible() {
+    if (Platform.OS !== 'android') {
+      return false;
+    }
+    return FloatingWindowModule.isVisible();
+  },
   async checkPermission() {
     if (Platform.OS !== 'android') {
       return false;

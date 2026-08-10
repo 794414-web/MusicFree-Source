@@ -1,5 +1,6 @@
 package `fun`.upup.musicfree.floatingWindow
 
+import android.app.Application
 import android.content.Context
 import android.content.Intent
 import android.content.res.ColorStateList
@@ -8,6 +9,8 @@ import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.util.DisplayMetrics
 import android.util.Log
 import android.util.TypedValue
@@ -20,8 +23,6 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
-import com.facebook.react.bridge.ReactContext
-import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -32,29 +33,30 @@ import java.net.URL
 /**
  * MusicFree 悬浮窗视图
  *
- * 功能：
- * - 顶部区域可拖动整个窗口
- * - 右下角可调整窗口大小
- * - 显示上一曲 / 播放暂停 / 下一曲 三个按钮
- * - 显示当前歌词文本
- *
- * 按钮点击通过 RCTDeviceEventEmitter 上抛到 JS 层。
+ * 优化点：
+ * - 接收 Application Context，避免 Activity 生命周期影响
+ * - show 支持两种模式：首次创建 + 已有实例重新显示
+ * - hide 只设置 GONE，保留 View 和状态
+ * - destroy 彻底从 WindowManager 移除
+ * - 所有 UI 更新通过 Handler 主线程执行
  */
-class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(reactContext) {
+class FloatingWindowView(private val appContext: Application) : FrameLayout(appContext) {
 
     companion object {
         private const val TAG = "FloatingWindowView"
     }
 
+    private val mainHandler = Handler(Looper.getMainLooper())
+
     private var windowManager: WindowManager? = null
     private var layoutParams: WindowManager.LayoutParams? = null
+    private var isAttached = false
 
     // 封面图
     private val coverImage: ImageView = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_INSIDE
         visibility = View.GONE
         setBackgroundColor(Color.TRANSPARENT)
-        // 让图片可以按比例缩放显示
         adjustViewBounds = true
     }
 
@@ -78,7 +80,6 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
     private val lyricText: TextView = TextView(context).apply {
         text = "MusicFree"
         setTextColor(Color.parseColor("#FFE9D2"))
-        // textSize 默认按 SP 单位解释，无需手动转换
         textSize = 14f
         gravity = Gravity.CENTER
         maxLines = 2
@@ -120,13 +121,15 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
     private var screenWidth = 0
     private var screenHeight = 0
 
+    // 保存当前位置用于 hide/show 恢复
+    private var savedX = 0
+    private var savedY = 0
+
     init {
-        // 初始化控制栏按钮
         prevBtn.setImageResource(android.R.drawable.ic_media_previous)
         playPauseBtn.setImageResource(android.R.drawable.ic_media_play)
         nextBtn.setImageResource(android.R.drawable.ic_media_next)
 
-        // 设置默认按钮图标颜色（与默认文字颜色一致）
         val defaultTextColor = Color.parseColor("#FFE9D2")
         val defaultTintList = ColorStateList.valueOf(defaultTextColor)
         prevBtn.imageTintList = defaultTintList
@@ -141,8 +144,6 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
         controlBar.addView(playPauseBtn, linearParams(dpToPx(8f).toInt()))
         controlBar.addView(nextBtn, linearParams(dpToPx(8f).toInt()))
 
-        // 添加封面（默认隐藏）
-        // 高度自适应，按比例缩放显示完整封面
         rootLayout.addView(
             coverImage,
             LinearLayout.LayoutParams(
@@ -198,15 +199,27 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
 
     /**
      * 显示悬浮窗
+     * - 首次调用：创建 WindowManager.LayoutParams 并添加到系统
+     * - 非首次调用：直接设置 VISIBLE，恢复保存的位置
      */
     fun show(initialWidth: Int, initialHeight: Int) {
-        if (windowManager != null) return
+        if (isAttached) {
+            // 已附加到 WindowManager，直接显示
+            this.visibility = View.VISIBLE
+            layoutParams?.let { lp ->
+                lp.x = savedX
+                lp.y = savedY
+                try {
+                    windowManager?.updateViewLayout(this, lp)
+                } catch (_: Exception) {}
+            }
+            return
+        }
 
         try {
             windowManager =
-                reactContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+                appContext.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
-            // 获取真实屏幕尺寸（包含状态栏/导航栏区域）
             val outMetrics = DisplayMetrics()
             @Suppress("DEPRECATION")
             windowManager?.defaultDisplay?.getRealMetrics(outMetrics)
@@ -229,40 +242,60 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                 width = currentWidth
                 height = currentHeight
                 gravity = Gravity.TOP or Gravity.START
-                x = (screenWidth - currentWidth) / 2
-                y = screenHeight / 4
+                x = if (savedX != 0 || savedY != 0) savedX else (screenWidth - currentWidth) / 2
+                y = if (savedX != 0 || savedY != 0) savedY else screenHeight / 4
             }
 
             windowManager?.addView(this, layoutParams)
+            isAttached = true
 
-            // 绑定触摸监听：处理拖动 + 缩放
             setOnTouchListener(CombinedTouchListener())
         } catch (e: Exception) {
-            hide()
+            Log.e(TAG, "show 失败", e)
             throw e
         }
     }
 
     /**
-     * 隐藏悬浮窗
+     * 隐藏悬浮窗（保留实例和状态，可快速恢复）
      */
     fun hide() {
         try {
-            if (windowManager != null && parent != null) {
+            if (isAttached && layoutParams != null) {
+                // 保存当前位置
+                savedX = layoutParams!!.x
+                savedY = layoutParams!!.y
+            }
+            // 只设置 GONE，不从 WindowManager 移除
+            this.visibility = View.GONE
+        } catch (e: Exception) {
+            Log.e(TAG, "hide 失败", e)
+        }
+    }
+
+    /**
+     * 彻底销毁悬浮窗（从 WindowManager 移除，清理所有资源）
+     */
+    fun destroy() {
+        try {
+            if (isAttached && parent != null) {
                 windowManager?.removeView(this)
             }
         } catch (e: Exception) {
-            // ignore
+            Log.e(TAG, "destroy 失败", e)
         }
         windowManager = null
         layoutParams = null
+        isAttached = false
+        savedX = 0
+        savedY = 0
     }
 
     /**
      * 更新歌词
      */
     fun setLyric(text: String?) {
-        post {
+        mainHandler.post {
             lyricText.text = text ?: ""
         }
     }
@@ -272,7 +305,7 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
      */
     fun setIsPlaying(playing: Boolean) {
         isPlaying = playing
-        post {
+        mainHandler.post {
             playPauseBtn.setImageResource(
                 if (playing) android.R.drawable.ic_media_pause
                 else android.R.drawable.ic_media_play
@@ -284,15 +317,15 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
      * 调整大小
      */
     fun setSize(width: Int, height: Int) {
-        val lp = layoutParams ?: return
-        currentWidth = width.coerceAtLeast(dpToPx(200f).toInt())
-        currentHeight = if (height > 0) height else WindowManager.LayoutParams.WRAP_CONTENT
-        lp.width = currentWidth
-        lp.height = currentHeight
-        try {
-            windowManager?.updateViewLayout(this, lp)
-        } catch (e: Exception) {
-            // ignore
+        mainHandler.post {
+            val lp = layoutParams ?: return@post
+            currentWidth = width.coerceAtLeast(dpToPx(200f).toInt())
+            currentHeight = if (height > 0) height else WindowManager.LayoutParams.WRAP_CONTENT
+            lp.width = currentWidth
+            lp.height = currentHeight
+            try {
+                windowManager?.updateViewLayout(this, lp)
+            } catch (_: Exception) {}
         }
     }
 
@@ -300,16 +333,16 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
      * 调整字号
      */
     fun setFontSize(sp: Float) {
-        post {
+        mainHandler.post {
             lyricText.textSize = sp
         }
     }
 
     /**
-     * 设置主题颜色（背景、文字、按钮图标）
+     * 设置主题颜色
      */
     fun setThemeColors(backgroundColor: String?, textColor: String?) {
-        post {
+        mainHandler.post {
             val textColorInt = try {
                 Color.parseColor(rgba2argb(textColor ?: "#FFE9D2"))
             } catch (e: Exception) {
@@ -320,53 +353,41 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                 (rootLayout.background as? GradientDrawable)?.setColor(
                     Color.parseColor(rgba2argb(backgroundColor ?: "#CC000000"))
                 )
-            } catch (e: Exception) {
-                // ignore
-            }
+            } catch (_: Exception) {}
 
             try {
                 lyricText.setTextColor(textColorInt)
-            } catch (e: Exception) {
-                // ignore
-            }
+            } catch (_: Exception) {}
 
-            // 同步按钮图标颜色
             try {
                 val tintList = ColorStateList.valueOf(textColorInt)
                 prevBtn.imageTintList = tintList
                 playPauseBtn.imageTintList = tintList
                 nextBtn.imageTintList = tintList
-            } catch (e: Exception) {
-                // ignore
-            }
+            } catch (_: Exception) {}
         }
     }
 
     /**
      * 设置封面图片
-     * @param url 图片 URL 或本地路径
      */
     fun setCover(url: String?) {
         if (url.isNullOrEmpty()) {
-            post {
+            mainHandler.post {
                 coverImage.setImageDrawable(null)
                 coverImage.visibility = View.GONE
             }
             return
         }
 
-        // 异步加载图片
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val bitmap = loadBitmap(url)
                 withContext(Dispatchers.Main) {
                     if (bitmap != null) {
-                        // 根据图片宽高比和当前窗口宽度计算显示高度
-                        val windowWidth = currentWidth -
-                            dpToPx(24f).toInt() // 减去左右 padding (12dp * 2)
+                        val windowWidth = currentWidth - dpToPx(24f).toInt()
                         val ratio = bitmap.height.toFloat() / bitmap.width.toFloat()
                         val targetHeight = (windowWidth * ratio).toInt()
-                        // 限制最大高度不超过屏幕一半
                         val maxHeight = screenHeight / 2
                         val finalHeight = targetHeight.coerceAtMost(maxHeight)
 
@@ -399,7 +420,7 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
      * 设置封面是否可见
      */
     fun setCoverVisible(visible: Boolean) {
-        post {
+        mainHandler.post {
             coverImage.visibility = if (visible) View.VISIBLE else View.GONE
         }
     }
@@ -410,7 +431,6 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
     private fun loadBitmap(path: String): android.graphics.Bitmap? {
         return try {
             if (path.startsWith("http://") || path.startsWith("https://")) {
-                // 网络图片
                 val url = URL(path)
                 val connection = url.openConnection() as HttpURLConnection
                 connection.doInput = true
@@ -418,7 +438,6 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                 val input = connection.inputStream
                 BitmapFactory.decodeStream(input)
             } else {
-                // 本地文件
                 BitmapFactory.decodeFile(path)
             }
         } catch (e: Exception) {
@@ -431,11 +450,12 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
      */
     private fun emitEvent(action: String) {
         try {
-            reactContext
-                .getJSModule(DeviceEventManagerModule.RCTDeviceEventEmitter::class.java)
-                .emit("FloatingWindowAction", action)
+            val reactContext = appContext as? com.facebook.react.bridge.ReactApplicationContext
+            reactContext?.getJSModule(
+                com.facebook.react.modules.core.DeviceEventManagerModule.RCTDeviceEventEmitter::class.java
+            )?.emit("FloatingWindowAction", action)
         } catch (e: Exception) {
-            // ignore
+            // 忽略：ReactContext 可能尚未初始化或已销毁
         }
     }
 
@@ -453,13 +473,12 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
      * - 其它区域支持拖动、单击进入软件、双击暂停/播放
      */
     private inner class CombinedTouchListener : OnTouchListener {
-        // 单击/双击检测相关
         private var lastClickTime: Long = 0
         private var lastClickX: Float = 0f
         private var lastClickY: Float = 0f
         private var moved = false
-        private val clickDistanceThreshold = dpToPx(10f) // 移动距离超过 10dp 视为拖动
-        private val doubleClickTimeWindow = 300L // 300ms 内连续点击视为双击
+        private val clickDistanceThreshold = dpToPx(10f)
+        private val doubleClickTimeWindow = 300L
 
         override fun onTouch(v: View, event: MotionEvent): Boolean {
             val lp = layoutParams ?: return false
@@ -473,7 +492,6 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                     initialTouchY = event.rawY
                     moved = false
 
-                    // 检查是否点击在右下角缩放区
                     val viewLocation = IntArray(2)
                     getLocationOnScreen(viewLocation)
                     val localX = event.rawX - viewLocation[0]
@@ -497,7 +515,6 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                     }
 
                     if (isResizing) {
-                        // 调整大小
                         val dxMove = (event.rawX - resizeInitialX).toInt()
                         val dyMove = (event.rawY - resizeInitialY).toInt()
                         val newW = (resizeInitialW + dxMove)
@@ -512,16 +529,15 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                         }
                         setSize(newW, newH)
                     } else {
-                        // 拖动
                         lp.x = (initialX + (event.rawX - initialTouchX).toInt())
                             .coerceIn(0, (screenWidth - lp.width).coerceAtLeast(0))
                         lp.y = (initialY + (event.rawY - initialTouchY).toInt())
                             .coerceIn(0, (screenHeight - lp.height).coerceAtLeast(0))
+                        savedX = lp.x
+                        savedY = lp.y
                         try {
                             windowManager?.updateViewLayout(this@FloatingWindowView, lp)
-                        } catch (e: Exception) {
-                            // ignore
-                        }
+                        } catch (_: Exception) {}
                     }
                     return true
                 }
@@ -530,7 +546,6 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                     val wasResizing = isResizing
                     isResizing = false
 
-                    // 未移动且非缩放，视为点击
                     if (!moved && !wasResizing) {
                         val now = System.currentTimeMillis()
                         val dxClick = Math.abs(event.rawX - lastClickX)
@@ -541,16 +556,13 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
                             dxClick <= clickDistanceThreshold * 2 &&
                             dyClick <= clickDistanceThreshold * 2
                         ) {
-                            // 双击：播放/暂停
-                            lastClickTime = 0 // 重置，避免连续多次触发
+                            lastClickTime = 0
                             emitEvent("toggle")
                         } else {
-                            // 单击：延迟判断，防止双击时先触发单击
                             lastClickTime = now
                             lastClickX = event.rawX
                             lastClickY = event.rawY
                             postDelayed({
-                                // 300ms 后检查，如果仍为这次点击，则执行单击（进入软件）
                                 if (lastClickTime == now) {
                                     launchApp()
                                 }
@@ -569,11 +581,11 @@ class FloatingWindowView(private val reactContext: ReactContext) : FrameLayout(r
      */
     private fun launchApp() {
         try {
-            val launchIntent = reactContext.packageManager
-                ?.getLaunchIntentForPackage(reactContext.packageName)
+            val launchIntent = appContext.packageManager
+                ?.getLaunchIntentForPackage(appContext.packageName)
             launchIntent?.let {
                 it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
-                reactContext.startActivity(it)
+                appContext.startActivity(it)
             }
         } catch (e: Exception) {
             Log.e(TAG, "启动 App 失败", e)

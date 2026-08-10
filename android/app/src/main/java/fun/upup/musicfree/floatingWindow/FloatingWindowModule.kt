@@ -1,22 +1,70 @@
 package `fun`.upup.musicfree.floatingWindow
 
+import android.app.Application
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import com.facebook.react.bridge.*
 
 /**
  * 悬浮窗原生模块：管理权限检查、显示、隐藏、状态更新
  *
- * 注意：实际显示的 View 是 FloatingWindowView，
- * 它直接通过 WindowManager 添加到系统层，因此只支持 Android。
+ * 优化点：
+ * - 使用 Application Context 避免 Activity 泄漏
+ * - 单例模式：不同类型的悬浮窗只保留一个实例
+ * - hide 只隐藏不销毁，show 时直接显示已有实例
+ * - destroy 彻底清理，不影响下次重新创建
+ * - 所有 UI 操作通过主线程 Handler
  */
 class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
 
     override fun getName(): String = "FloatingWindow"
 
-    private var view: FloatingWindowView? = null
+    companion object {
+        private const val TAG = "FloatingWindowModule"
+
+        @Volatile
+        private var instance: FloatingWindowView? = null
+
+        @Volatile
+        private var isVisible: Boolean = false
+
+        private val mainHandler = Handler(Looper.getMainLooper())
+
+        /**
+         * 获取单例实例（线程安全）
+         */
+        fun getInstance(context: Context): FloatingWindowView {
+            return instance ?: synchronized(this) {
+                instance ?: FloatingWindowView(context.applicationContext as Application).also {
+                    instance = it
+                }
+            }
+        }
+
+        /**
+         * 彻底销毁悬浮窗
+         */
+        fun destroyInstance() {
+            mainHandler.post {
+                try {
+                    instance?.let { view ->
+                        view.destroy()
+                    }
+                } catch (_: Exception) {}
+                instance = null
+                isVisible = false
+            }
+        }
+    }
+
+    private val appContext: Context by lazy {
+        reactContext.applicationContext
+    }
 
     @ReactMethod
     fun checkPermission(promise: Promise) {
@@ -36,7 +84,6 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
             }
             reactContext.currentActivity?.startActivity(intent)
                 ?: run {
-                    // 没有当前 Activity 时也尝试启动
                     reactContext.startActivity(intent)
                 }
             promise.resolve(true)
@@ -53,12 +100,11 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
                 return
             }
 
-            UiThreadUtil.runOnUiThread {
+            mainHandler.post {
                 try {
-                    if (view == null) {
-                        view = FloatingWindowView(reactContext)
-                    }
-                    view?.show(initialWidth, initialHeight)
+                    val view = getInstance(appContext)
+                    view.show(initialWidth, initialHeight)
+                    isVisible = true
                     promise.resolve(true)
                 } catch (e: Exception) {
                     promise.reject("Exception", e.message)
@@ -72,11 +118,34 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun hide(promise: Promise) {
         try {
-            UiThreadUtil.runOnUiThread {
-                view?.hide()
-                view = null
+            mainHandler.post {
+                try {
+                    instance?.hide()
+                    isVisible = false
+                    promise.resolve(true)
+                } catch (e: Exception) {
+                    promise.reject("Exception", e.message)
+                }
             }
+        } catch (e: Exception) {
+            promise.reject("Exception", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun destroy(promise: Promise) {
+        try {
+            destroyInstance()
             promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("Exception", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun isVisible(promise: Promise) {
+        try {
+            promise.resolve(isVisible)
         } catch (e: Exception) {
             promise.reject("Exception", e.message)
         }
@@ -85,8 +154,8 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setLyric(text: String, promise: Promise) {
         try {
-            UiThreadUtil.runOnUiThread {
-                view?.setLyric(text)
+            mainHandler.post {
+                instance?.setLyric(text)
             }
             promise.resolve(true)
         } catch (e: Exception) {
@@ -97,8 +166,8 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setIsPlaying(playing: Boolean, promise: Promise) {
         try {
-            UiThreadUtil.runOnUiThread {
-                view?.setIsPlaying(playing)
+            mainHandler.post {
+                instance?.setIsPlaying(playing)
             }
             promise.resolve(true)
         } catch (e: Exception) {
@@ -109,8 +178,8 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setSize(width: Int, height: Int, promise: Promise) {
         try {
-            UiThreadUtil.runOnUiThread {
-                view?.setSize(width, height)
+            mainHandler.post {
+                instance?.setSize(width, height)
             }
             promise.resolve(true)
         } catch (e: Exception) {
@@ -121,8 +190,8 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setFontSize(sp: Double, promise: Promise) {
         try {
-            UiThreadUtil.runOnUiThread {
-                view?.setFontSize(sp.toFloat())
+            mainHandler.post {
+                instance?.setFontSize(sp.toFloat())
             }
             promise.resolve(true)
         } catch (e: Exception) {
@@ -133,8 +202,8 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setThemeColors(backgroundColor: String?, textColor: String?, promise: Promise) {
         try {
-            UiThreadUtil.runOnUiThread {
-                view?.setThemeColors(backgroundColor, textColor)
+            mainHandler.post {
+                instance?.setThemeColors(backgroundColor, textColor)
             }
             promise.resolve(true)
         } catch (e: Exception) {
@@ -145,7 +214,9 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setCover(url: String?, promise: Promise) {
         try {
-            view?.setCover(url)
+            mainHandler.post {
+                instance?.setCover(url)
+            }
             promise.resolve(true)
         } catch (e: Exception) {
             promise.reject("Exception", e.message)
@@ -155,8 +226,8 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun setCoverVisible(visible: Boolean, promise: Promise) {
         try {
-            UiThreadUtil.runOnUiThread {
-                view?.setCoverVisible(visible)
+            mainHandler.post {
+                instance?.setCoverVisible(visible)
             }
             promise.resolve(true)
         } catch (e: Exception) {
@@ -172,5 +243,11 @@ class FloatingWindowModule(private val reactContext: ReactApplicationContext) :
     @ReactMethod
     fun removeListeners(count: Int) {
         // Required for RN event emitter API, no-op
+    }
+
+    override fun onCatalystInstanceDestroy() {
+        super.onCatalystInstanceDestroy()
+        // RN 实例销毁时不清理悬浮窗（因为使用 Application Context）
+        // 悬浮窗应该持续存在直到用户主动关闭或应用被杀
     }
 }

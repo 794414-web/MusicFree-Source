@@ -1,25 +1,25 @@
 {
-  "version": "1.2.9",
+  "version": "1.2.10",
   "changeLog": [
-    "## v1.2.9 车机全屏通知 + 输入法修复版",
+    "## v1.2.10 悬浮窗优化 + 汽水音乐源版",
     "",
-    "### 新增车机全屏通知兼容",
-    "- 支持 FULLSCREEN_ON / FULLSCREEN_OFF 广播",
-    "- 车机系统可控制应用全屏显示状态",
-    "- 集成 FullscreenNotificationModule 原生模块",
+    "### 悬浮窗生命周期优化",
+    "- 使用 Application Context，避免 Activity 泄漏",
+    "- 单例模式，不重复创建悬浮窗实例",
+    "- hide 只隐藏不销毁，show 可快速恢复显示",
+    "- destroy 彻底清理，支持重新创建",
+    "- 所有 UI 操作通过主线程 Handler 执行",
+    "- 新增 destroy/isVisible 原生接口",
     "",
-    "### 修复输入法问题",
-    "- 修复输入框和粘贴功能输入法加载崩溃的问题",
-    "- 将 TextInput 从 react-native-gesture-handler 迁移到 react-native",
-    "- 优化输入框焦点管理，延迟 focus 防止动画期间崩溃",
+    "### 新增内置音乐源",
+    "- 新增汽水音乐（抖音）内置音乐源 qishui.js",
     "",
-    "### 项目优化",
-    "- versionCode 改为日期格式 (yyyyMMdd)",
-    "- 清理无用测试文件、旧截图、废弃配置文件"
+    "### 其他",
+    "- versionCode 基于日期自动生成"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.9/MusicFree-1.2.9-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.9/MusicFree-1.2.9-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.9/release/MusicFree-1.2.9-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.10/MusicFree-1.2.10-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.10/MusicFree-1.2.10-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.10/release/MusicFree-1.2.10-universal.apk"
   ]
 }
