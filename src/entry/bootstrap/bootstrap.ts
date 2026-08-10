@@ -36,7 +36,7 @@ import RemoteControlService from "@/core/remoteControl";
  * 这些 js 文件位于 android/app/src/main/assets/plugins/
  * 首次启动或版本升级时自动复制到插件目录
  */
-const BUILTIN_PLUGINS_VERSION = "1";
+const BUILTIN_PLUGINS_VERSION = "2";
 const BUILTIN_PLUGIN_FILES = [
     "xiaoqiu.js",
     "xiaowo.js",
@@ -44,6 +44,7 @@ const BUILTIN_PLUGIN_FILES = [
     "xiaogou.js",
     "xiaomi.js",
     "sixyin.js",
+    "qishui.js",
 ];
 
 

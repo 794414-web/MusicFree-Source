@@ -1,25 +1,23 @@
 {
-  "version": "1.2.10",
+  "version": "1.2.11",
   "changeLog": [
-    "## v1.2.10 悬浮窗优化 + 汽水音乐源版",
+    "## v1.2.11 修复汽水音乐源加载",
+    "",
+    "### 修复内置音源加载",
+    "- 修复 qishui.js 未注册到内置音源列表的问题",
+    "- 升级内置音源版本号强制重新复制到插件目录",
+    "- 汽水音乐（抖音）内置音乐源现在可正常加载",
     "",
     "### 悬浮窗生命周期优化",
     "- 使用 Application Context，避免 Activity 泄漏",
     "- 单例模式，不重复创建悬浮窗实例",
     "- hide 只隐藏不销毁，show 可快速恢复显示",
     "- destroy 彻底清理，支持重新创建",
-    "- 所有 UI 操作通过主线程 Handler 执行",
-    "- 新增 destroy/isVisible 原生接口",
-    "",
-    "### 新增内置音乐源",
-    "- 新增汽水音乐（抖音）内置音乐源 qishui.js",
-    "",
-    "### 其他",
-    "- versionCode 基于日期自动生成"
+    "- 所有 UI 操作通过主线程 Handler 执行"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.10/MusicFree-1.2.10-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.10/MusicFree-1.2.10-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.10/release/MusicFree-1.2.10-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.11/MusicFree-1.2.11-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.11/MusicFree-1.2.11-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.11/release/MusicFree-1.2.11-universal.apk"
   ]
 }
