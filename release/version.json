@@ -1,35 +1,20 @@
 {
-  "version": "1.2.12",
+  "version": "1.2.13",
   "changeLog": [
-    "## v1.2.12 深度内存优化版",
+    "## v1.2.13 音源切换版",
     "",
-    "### 代码级优化（ProGuard/R8）",
-    "- 启用 ProGuard/R8 代码混淆和压缩",
-    "- APK 体积从 34MB 降至 29MB (-14%)",
-    "- 移除未使用的 Java/Kotlin 字节码",
-    "- 内联函数、删除无用类和方法",
-    "- 资源压缩，移除未使用的 drawable/layout/string",
-    "",
-    "### 播放器缓冲优化",
-    "- TrackPlayer minBuffer: 30 秒（原无限制）",
-    "- TrackPlayer maxBuffer: 60 秒（原无限制）",
-    "- bufferInterval: 250ms",
-    "- 减少音频预缓冲占用",
-    "",
-    "### 缓存与清理",
-    "- 磁盘缓存上限: 100MB (原 512MB)",
-    "- 内存清理阈值: 300MB (原 400MB)",
-    "- 清理间隔: 15 分钟 (原 30 分钟)",
-    "- 内存监控采样: 2 分钟 (原 5 分钟)",
-    "",
-    "### 悬浮窗优化",
-    "- 单例模式，Application Context",
-    "- hide/show 优化，destroy 彻底清理",
-    "- 主线程 Handler 操作"
+    "- 移除所有旧内置音源（xiaoqiu/xiaowo/xiaoyun/xiaogou/xiaomi/sixyin/qishui）",
+    "- 移除旧默认订阅源（源离插件库）",
+    "- 新默认订阅源：MusicFree 音源库 (https://www.imwzh.com/musicfree.json)",
+    "- 启动时自动清理旧插件缓存和文件",
+    "- JVM 目标版本统一为 17，修复 Kotlin 编译兼容性",
+    "- ProGuard/R8 代码混淆，APK 体积优化",
+    "- TrackPlayer 缓冲区优化",
+    "- 内存清理阈值优化"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.12/MusicFree-1.2.12-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.12/MusicFree-1.2.12-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.12/release/MusicFree-1.2.12-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.13/MusicFree-1.2.13-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.13/MusicFree-1.2.13-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.13/release/MusicFree-1.2.13-universal.apk"
   ]
 }

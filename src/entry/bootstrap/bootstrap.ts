@@ -24,28 +24,21 @@ import Toast from "@/utils/toast";
 import * as SplashScreen from "expo-splash-screen";
 import {  Linking, Platform } from "react-native";
 import { PERMISSIONS, check, request } from "react-native-permissions";
-import RNFS from "react-native-fs";
+import RNFS, { readDir, unlink } from "react-native-fs";
 import RNTrackPlayer, { AppKilledPlaybackBehavior, Capability } from "react-native-track-player";
 import i18n from "@/core/i18n";
 import bootstrapAtom from "./bootstrap.atom";
 import { getDefaultStore } from "jotai";
 import RemoteControlService from "@/core/remoteControl";
+import getOrCreateMMKV from "@/utils/getOrCreateMMKV";
 
 /**
  * 内置音源清单
  * 这些 js 文件位于 android/app/src/main/assets/plugins/
  * 首次启动或版本升级时自动复制到插件目录
  */
-const BUILTIN_PLUGINS_VERSION = "2";
-const BUILTIN_PLUGIN_FILES = [
-    "xiaoqiu.js",
-    "xiaowo.js",
-    "xiaoyun.js",
-    "xiaogou.js",
-    "xiaomi.js",
-    "sixyin.js",
-    "qishui.js",
-];
+const BUILTIN_PLUGINS_VERSION = "3";
+const BUILTIN_PLUGIN_FILES: string[] = [];
 
 
 // 依赖管理
@@ -196,7 +189,7 @@ async function bootstrapImpl() {
 
     // 设置默认插件订阅（车载版专用）
     try {
-        setupDefaultPluginSubscribe();
+        await setupDefaultPluginSubscribe();
     } catch (e) {
         console.error("设置默认插件订阅失败:", e);
     }
@@ -474,20 +467,55 @@ async function setupBuiltinPlugins() {
  * 设置默认插件订阅（车载版专用）
  * 首次启动时自动添加订阅源并安装插件
  */
-function setupDefaultPluginSubscribe() {
+async function setupDefaultPluginSubscribe() {
     try {
         const currentSubscribe = Config.getConfig("plugin.subscribeUrl");
-        // 如果还没有订阅，则添加默认订阅
-        if (!currentSubscribe || currentSubscribe.trim() === "") {
+        const OLD_DEFAULT_URL = "https://13413.kstore.vip/yuanli/yuanli.json";
+        const NEW_DEFAULT_URL = "https://www.imwzh.com/musicfree.json";
+
+        // 如果还没有订阅，或是旧的默认订阅，则更新为新的
+        if (
+            !currentSubscribe ||
+            currentSubscribe.trim() === "" ||
+            currentSubscribe.includes(OLD_DEFAULT_URL)
+        ) {
             const defaultSubscribe = JSON.stringify([
                 {
-                    name: "源离插件库",
-                    url: "https://13413.kstore.vip/yuanli/yuanli.json",
+                    name: "MusicFree 音源库",
+                    url: NEW_DEFAULT_URL,
                 },
             ]);
             Config.setConfig("plugin.subscribeUrl", defaultSubscribe);
-            console.log("已设置默认插件订阅：源离插件库");
+            console.log("已设置默认插件订阅：MusicFree 音源库");
             
+            // 清除旧插件缓存（内置音源已移除）
+            try {
+                const pluginCacheStore = getOrCreateMMKV("plugin.cache");
+                const cachedKeys = pluginCacheStore.getAllKeys();
+                cachedKeys.forEach(key => {
+                    pluginCacheStore.delete(key);
+                });
+                console.log("已清除旧插件缓存");
+            } catch {}
+            
+            // 清除旧插件文件
+            try {
+                const pluginFiles = await readDir(pathConst.pluginPath);
+                const builtinFilePatterns = [
+                    "xiaoqiu", "xiaowo", "xiaoyun", "xiaogou",
+                    "xiaomi", "sixyin", "qishui"
+                ];
+                for (const file of pluginFiles) {
+                    const name = file.name ?? file.path ?? "";
+                    if (builtinFilePatterns.some(p => name.startsWith(p))) {
+                        try {
+                            await unlink(file.path);
+                        } catch {}
+                    }
+                }
+                console.log("已清除旧内置音源文件");
+            } catch {}
+
             // 延迟一下，等订阅设置完成后再安装插件
             setTimeout(async () => {
                 try {
