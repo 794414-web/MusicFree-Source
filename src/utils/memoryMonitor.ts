@@ -19,8 +19,8 @@ let cleanupConfig: {
     intervalMin: number;
 } = {
     enabled: true,
-    thresholdMB: 400,
-    intervalMin: 30,
+    thresholdMB: 300,
+    intervalMin: 15,
 };
 
 export interface IMemorySnapshot {

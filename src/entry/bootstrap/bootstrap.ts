@@ -86,8 +86,8 @@ function setupLowMemoryDefaults() {
         ["basic.steeringWheelControl", false],
         ["basic.associateLyricType", "input"],
         ["basic.autoMemoryCleanup", true],
-        ["basic.memoryCleanupThreshold", 400],
-        ["basic.memoryCleanupInterval", 30],
+        ["basic.memoryCleanupThreshold", 300],
+        ["basic.memoryCleanupInterval", 15],
     ];
 
     defaults.forEach(([key, value]) => {
@@ -208,9 +208,9 @@ async function bootstrapImpl() {
         console.error("启动缓存清理失败:", e);
     }
 
-    // 启动内存监控（每 5 分钟采样一次，输出到 trace 日志）
+    // 启动内存监控（每 2 分钟采样一次，更快发现内存问题）
     try {
-        startMemoryMonitor(5 * 60 * 1000);
+        startMemoryMonitor(2 * 60 * 1000);
     } catch (e) {
         console.error("启动内存监控失败:", e);
     }
@@ -265,7 +265,11 @@ export async function initTrackPlayer(logger?: IPerfLogger) {
     try {
         await RNTrackPlayer.setupPlayer({
             maxCacheSize:
-                Config.getConfig("basic.maxCacheSize") ?? 1024 * 1024 * 512,
+                Config.getConfig("basic.maxCacheSize") ?? 100 * 1024 * 1024,
+            minBuffer: 30,
+            maxBuffer: 60,
+            bufferInterval: 250,
+            progressUpdateEventInterval: 2,
         });
     } catch (e: any) {
         if (
