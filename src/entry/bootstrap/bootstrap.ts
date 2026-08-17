@@ -257,6 +257,10 @@ async function setupFolder() {
 }
 
 export async function initTrackPlayer(logger?: IPerfLogger) {
+    // 禁用通知栏：关闭自动更新通知元数据（避免切歌/播放时向通知栏推送），
+    // 不再调用 clearNowPlayingMetadata（在空播放队列时原生层会空指针崩溃）
+    const disableNotification =
+        Config.getConfig("basic.disableNotification") ?? true;
     try {
         await RNTrackPlayer.setupPlayer({
             maxCacheSize:
@@ -265,7 +269,7 @@ export async function initTrackPlayer(logger?: IPerfLogger) {
             maxBuffer: 60,
             bufferInterval: 250,
             progressUpdateEventInterval: 2,
-            autoUpdateMetadata: false,
+            autoUpdateMetadata: !disableNotification,
         });
     } catch (e: any) {
         if (
@@ -303,12 +307,6 @@ export async function initTrackPlayer(logger?: IPerfLogger) {
         compactCapabilities: capabilities,
         notificationCapabilities: [...capabilities, Capability.SeekTo],
     });
-
-    if (Config.getConfig("basic.disableNotification") ?? true) {
-        try {
-            await RNTrackPlayer.clearNowPlayingMetadata();
-        } catch {}
-    }
 
     logger?.mark("播放器初始化完成");
     trace("播放器初始化完成");

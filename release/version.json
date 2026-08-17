@@ -1,16 +1,17 @@
 {
-  "version": "1.2.14",
+  "version": "1.2.15",
   "changeLog": [
-    "## v1.2.14 车机息屏暂停 + 播放失败自动换源版",
+    "## v1.2.15 手机端启动闪退修复版",
     "",
-    "- 车载模式：息屏自动暂停播放（设置 → 方向盘控制可开关）",
-    "- 通知栏：默认不显示播放通知，切歌不再发送通知（设置 → 通用可开关）",
-    "- 播放失败：自动按歌名+作者搜索其他音源并换源播放，找不到再跳下一首",
-    "- 根目录开发调试文件不再进入仓库"
+    "- 修复：手机端启动/播放时可能闪退的问题（未处理异常导致崩溃）",
+    "- 修复：历史播放记录音源失效时启动恢复的容错处理",
+    "- 修复：播放失败自动换源逻辑的异常兜底，不再卡死或崩溃",
+    "- 通知栏：默认不显示播放通知，切歌不再发送通知",
+    "- 播放失败：自动按歌名+作者搜索其他音源并换源播放"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.14/MusicFree-1.2.14-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.14/MusicFree-1.2.14-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.14/release/MusicFree-1.2.14-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.15/MusicFree-1.2.15-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.15/MusicFree-1.2.15-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.15/release/MusicFree-1.2.15-universal.apk"
   ]
 }

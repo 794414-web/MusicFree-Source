@@ -158,21 +158,34 @@ class TrackPlayer extends EventEmitter<{
                 track.isInit = true;
             }
 
-            // 异步
-            this.pluginManagerService.getByMedia(track)
-                ?.methods.getMediaSource(track, quality)
-                .then(async newSource => {
-                    track.url = newSource?.url || track.url;
-                    track.headers = newSource?.headers || track.headers;
+            // 异步获取播放源（音源插件可能已失效/卸载，需整体容错，避免启动闪退）
+            const restorePlugin = this.pluginManagerService.getByMedia(track);
+            if (restorePlugin?.methods?.getMediaSource) {
+                restorePlugin.methods
+                    .getMediaSource(track, quality)
+                    .then(async newSource => {
+                        track.url = newSource?.url || track.url;
+                        track.headers =
+                            newSource?.headers || track.headers;
 
-                    if (isSameMediaItem(this.currentMusic, track)) {
-                        await this.setTrackSource(track as Track, false);
-                        if (progress) {
-                            // 异步
-                            this.seekTo(progress);
+                        if (isSameMediaItem(this.currentMusic, track)) {
+                            await this.setTrackSource(track as Track, false);
+                            if (progress) {
+                                // 异步
+                                this.seekTo(progress);
+                            }
                         }
-                    }
-                });
+                    })
+                    .catch(() => {
+                        // 音源失效/插件异常：忽略，避免未处理的 Promise rejection
+                    });
+            } else if (
+                track.url &&
+                isSameMediaItem(this.currentMusic, track)
+            ) {
+                // 音源插件不可用但有缓存地址：直接恢复播放器状态
+                this.setTrackSource(track as Track, false).catch(() => {});
+            }
             this.setCurrentMusic(track);
 
             if (progress) {
@@ -871,20 +884,37 @@ class TrackPlayer extends EventEmitter<{
      * 1. 若开启"播放失败时尝试更换音源"，先在其他音源中搜索同一首歌（按歌名+作者）并换源播放
      * 2. 找不到可用音源后，再按设置决定：跳转下一首 或 自动暂停
      */
+    private lastSourceSwitchAt = 0;
+
     private async handlePlayFail() {
-        // 先尝试搜索并切换到其他音源播放当前歌曲，避免直接跳到下一首
-        if (this.configService.getConfig("basic.tryChangeSourceWhenPlayFail")) {
-            const switched = await this.tryPlayWithAnotherSource(
-                this.currentMusic,
-            );
-            if (switched) {
-                return;
+        // 整体容错：任何一步出错（换源/跳转）都不能变成未处理的 Promise rejection 导致闪退
+        try {
+            // 先尝试搜索并切换到其他音源播放当前歌曲，避免直接跳到下一首
+            if (this.configService.getConfig("basic.tryChangeSourceWhenPlayFail")) {
+                // 防重入：15 秒内已换过源则不再重复搜索，
+                // 避免音源全部失效时反复换源导致卡死/内存暴涨
+                if (Date.now() - this.lastSourceSwitchAt > 15000) {
+                    const switched = await this.tryPlayWithAnotherSource(
+                        this.currentMusic,
+                    );
+                    if (switched) {
+                        this.lastSourceSwitchAt = Date.now();
+                        return;
+                    }
+                }
             }
-        }
-        // 换源失败（或未开启换源），按设置处理：未开启自动暂停时跳转下一首
-        if (!this.configService.getConfig("basic.autoStopWhenError")) {
-            await delay(500);
-            await this.skipToNext();
+            // 换源失败（或未开启换源），按设置处理：未开启自动暂停时跳转下一首
+            if (!this.configService.getConfig("basic.autoStopWhenError")) {
+                await delay(500);
+                await this.skipToNext();
+            }
+        } catch (e: any) {
+            trace("播放失败处理异常", e?.message);
+            try {
+                await this.skipToNext();
+            } catch {
+                // 跳转也失败则静默，避免未处理 rejection
+            }
         }
     }
 
@@ -923,9 +953,16 @@ class TrackPlayer extends EventEmitter<{
             if (!this.isCurrentMusic(musicItem)) {
                 return false;
             }
-            source =
-                (await plugin?.methods?.getMediaSource(similarMusic, quality)) ??
-                null;
+            try {
+                source =
+                    (await plugin?.methods?.getMediaSource(
+                        similarMusic,
+                        quality,
+                    )) ?? null;
+            } catch {
+                // 新音源插件异常（源失效等）：跳过该音质继续尝试
+                source = null;
+            }
             if (source) {
                 this.setQuality(quality);
                 break;
@@ -994,9 +1031,15 @@ class TrackPlayer extends EventEmitter<{
             if (plugin.name === musicItem.platform) {
                 continue;
             }
-            const results = await plugin.methods
-                .search(keyword, 1, type)
-                .catch(() => null);
+            let results: { data?: ICommon.SupportMediaItemBase[T][] } | null =
+                null;
+            try {
+                results =
+                    (await plugin.methods?.search?.(keyword, 1, type)) ?? null;
+            } catch {
+                // 插件 search 异常（源失效等）：跳过该插件
+                results = null;
+            }
 
             // 取前两个
             const firstTwo = results?.data?.slice(0, 2) || [];
