@@ -146,14 +146,26 @@ class TrackPlayer extends EventEmitter<{
         }
 
         if (musicQueue && Array.isArray(musicQueue)) {
-            this.addAll(
-                musicQueue,
-                undefined,
-                repeatMode === MusicRepeatMode.SHUFFLE,
+            // 过滤历史数据中的畸形项（null / 非对象 / 缺 id 等，常见于“其他源”残留数据），
+            // 避免 createMediaIndexMap 访问 item.platform 时抛 TypeError 导致启动崩溃
+            const validQueue = musicQueue.filter(
+                item =>
+                    item &&
+                    typeof item === "object" &&
+                    !Array.isArray(item) &&
+                    (item as any).id !== undefined &&
+                    (item as any).id !== null,
             );
+            if (validQueue.length > 0) {
+                this.addAll(
+                    validQueue,
+                    undefined,
+                    repeatMode === MusicRepeatMode.SHUFFLE,
+                );
+            }
         }
 
-        if (track && this.isInPlayList(track)) {
+        if (track && typeof track === "object" && this.isInPlayList(track)) {
             if (!this.configService.getConfig("basic.autoPlayWhenAppStart")) {
                 track.isInit = true;
             }

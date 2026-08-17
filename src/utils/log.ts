@@ -106,6 +106,42 @@ export function errorLog(desc: string, message: any) {
     }
 }
 
+/**
+ * 无条件崩溃日志
+ * 不受 debug.errorLog 开关限制，始终写入错误日志文件（error-log-{date}.log），
+ * 用于定位启动闪退等必须记录的问题。
+ */
+export function crashLog(desc: string, message?: any) {
+    try {
+        log.error({
+            desc: `[CRASH] ${desc}`,
+            message,
+        });
+    } catch {}
+}
+
+/**
+ * 尽早注册全局 JS 错误处理器
+ * 在 bootstrap 最早期调用，捕获任何未捕获异常/致命错误并写入崩溃日志，
+ * 避免启动阶段闪退后无法定位问题。
+ */
+export function setupGlobalErrorHandler() {
+    try {
+        // ErrorUtils 是 React Native 的全局对象（global.ErrorUtils），
+        // 覆盖其全局错误处理函数，捕获所有未捕获异常
+        const ErrorUtils = (globalThis as any)?.ErrorUtils;
+        if (ErrorUtils?.setGlobalHandler) {
+            ErrorUtils.setGlobalHandler((error: any, isFatal?: boolean) => {
+                const message =
+                    error?.stack || error?.message || String(error);
+                crashLog("未捕获的错误", { message, isFatal });
+                // 同时打印到控制台，方便 logcat 捕获
+                console.error("[CRASH]", message);
+            });
+        }
+    } catch {}
+}
+
 export function devLog(
     method: "log" | "error" | "warn" | "info",
     ...args: any[]

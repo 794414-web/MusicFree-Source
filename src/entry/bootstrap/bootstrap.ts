@@ -17,7 +17,7 @@ import Theme from "@/core/theme";
 import TrackPlayer from "@/core/trackPlayer";
 import NativeUtils from "@/native/utils";
 import { checkAndCreateDir } from "@/utils/fileUtils";
-import { errorLog, trace } from "@/utils/log";
+import { crashLog, setupGlobalErrorHandler, trace } from "@/utils/log";
 import { IPerfLogger, perfLogger } from "@/utils/perfLogger";
 import PersistStatus from "@/utils/persistStatus";
 import Toast from "@/utils/toast";
@@ -70,7 +70,7 @@ function setupLowMemoryDefaults() {
         ["basic.defaultDownloadQuality", "standard"],
         ["basic.downloadQualityOrder", "desc"],
         ["basic.maxDownload", 1],
-        ["debug.errorLog", false],
+        ["debug.errorLog", true],
         ["debug.traceLog", false],
         ["debug.devLog", false],
         ["lyric.showStatusBarLyric", false],
@@ -113,6 +113,10 @@ function initMemoryCleanupConfig() {
 
 
 async function bootstrapImpl() {
+    // 尽早注册全局错误处理器（在一切初始化之前），
+    // 确保启动阶段的任何未捕获异常/致命错误都能写入崩溃日志，便于定位闪退
+    setupGlobalErrorHandler();
+
     await SplashScreen.preventAutoHideAsync()
         .then(result =>
             console.log(
@@ -234,10 +238,6 @@ async function bootstrapImpl() {
 
     i18n.setup();
     logger.mark("语言模块初始化完成");
-    
-    ErrorUtils.setGlobalHandler(error => {
-        errorLog("未捕获的错误", error);
-    });
 }
 
 /** 初始化 */
@@ -557,7 +557,10 @@ export default async function () {
             "state": "Done",
         });
     } catch (e: any) {
-        errorLog("初始化出错", e);
+        crashLog("初始化出错", {
+            message: e?.message ?? String(e),
+            stack: e?.stack,
+        });
         if (getDefaultStore().get(bootstrapAtom).state === "Loading") {
             getDefaultStore().set(bootstrapAtom, {
                 state: "Fatal",
