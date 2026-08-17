@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { StyleSheet, View, TouchableOpacity, TextInput } from "react-native";
+import { StyleSheet, View, TouchableOpacity, TextInput, Keyboard } from "react-native";
 import rpx, { vh } from "@/utils/rpx";
 import { fontSizeConst } from "@/constants/uiConst";
 import useColors from "@/hooks/useColors";
@@ -40,6 +40,24 @@ export default function SimpleInput(props: ISimpleInputProps) {
     const colors = useColors();
     const inputRef = useRef<TextInput>(null);
     const hasFocusedRef = useRef(false);
+    const lastShowTimeRef = useRef(0);
+
+    // 输入法兜底：键盘弹出后短时间内被自动关闭（如布局变化导致的失焦/重排），
+    // 面板仍打开时重新唤起焦点，避免出现“无法输入”的问题。
+    useEffect(() => {
+        const showSub = Keyboard.addListener("keyboardDidShow", () => {
+            lastShowTimeRef.current = Date.now();
+        });
+        const hideSub = Keyboard.addListener("keyboardDidHide", () => {
+            if (Date.now() - lastShowTimeRef.current < 1500) {
+                setTimeout(() => inputRef.current?.focus(), 80);
+            }
+        });
+        return () => {
+            showSub.remove();
+            hideSub.remove();
+        };
+    }, []);
 
     async function handlePaste() {
         try {

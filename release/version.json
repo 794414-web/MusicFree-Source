@@ -1,17 +1,17 @@
 {
-  "version": "1.2.16",
+  "version": "1.2.17",
   "changeLog": [
-    "## v1.2.16 手机端闪退修复（关闭R8混淆）",
+    "## v1.2.17 手机端启动闪退深度修复 + 输入法稳定性",
     "",
-    "- 修复：手机端启动闪退问题（回退 R8 混淆配置，v1.2.12 误开启后导致手机端崩溃）",
-    "- 优化：启动阶段自动注册全局错误处理器，崩溃信息写入日志文件",
-    "- 优化：错误日志默认开启，应用内「设置→开发者→查看日志」可直接查看崩溃详情",
-    "- 修复：播放失败自动换源逻辑的异常兜底，不再卡死或崩溃",
-    "- 修复：历史播放记录音源失效时启动恢复的容错处理"
+    "- 修复：启动阶段配置读取容错，单个配置值损坏不再导致闪退",
+    "- 修复：歌单数据缺失/畸形（其他源残留）导致启动闪退，自动兜底并过滤非法数据",
+    "- 修复：历史播放记录畸形数据（其他源残留）导致启动闪退，自动过滤",
+    "- 修复：导入歌单页面输入法自动关闭问题（方向误判导致面板重排，重新唤起输入焦点）",
+    "- 优化：v1.2.16 基础上继续加固播放队列、配置、歌单、历史数据的启动容错"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.16/MusicFree-1.2.16-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.16/MusicFree-1.2.16-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.16/release/MusicFree-1.2.16-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.17/MusicFree-1.2.17-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.17/MusicFree-1.2.17-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.17/release/MusicFree-1.2.17-universal.apk"
   ]
 }

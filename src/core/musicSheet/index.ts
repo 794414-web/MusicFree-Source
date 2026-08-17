@@ -58,11 +58,22 @@ class MusicSheetClazz implements IInjectable {
         // 升级逻辑 - 从 AsyncStorage 升级到 MMKV
         await migrate();
         try {
-            const allSheets: IMusic.IMusicSheetItemBase[] = storage.getSheets();
+            let allSheets: IMusic.IMusicSheetItemBase[] = storage.getSheets();
 
             if (!Array.isArray(allSheets)) {
                 throw new Error("not exist");
             }
+
+            // 过滤历史数据中的畸形歌单项（null / 非对象 / 缺 id 等，其他源残留数据常见），
+            // 避免访问 allSheets[0].id 时空项抛错导致启动失败
+            allSheets = allSheets.filter(
+                it =>
+                    it &&
+                    typeof it === "object" &&
+                    !Array.isArray(it) &&
+                    (it as any).id !== undefined &&
+                    (it as any).id !== null,
+            );
 
             let needRestore = false;
             if (!allSheets.length) {
@@ -92,7 +103,22 @@ class MusicSheetClazz implements IInjectable {
             }
 
             for (let sheet of allSheets) {
-                const musicList = storage.getMusicList(sheet.id);
+                const rawMusicList = storage.getMusicList(sheet.id);
+                // 歌单歌曲数据可能缺失或畸形（其他源残留数据常见），
+                // 兜底为空数组并过滤非法项（null / 缺 id / 缺 platform），
+                // 避免 musicList.length、forEach、展开运算符对 null/畸形项抛错导致启动失败
+                const musicList = (
+                    Array.isArray(rawMusicList) ? rawMusicList : []
+                ).filter(
+                    it =>
+                        it &&
+                        typeof it === "object" &&
+                        !Array.isArray(it) &&
+                        (it as any).platform !== undefined &&
+                        (it as any).platform !== null &&
+                        (it as any).id !== undefined &&
+                        (it as any).id !== null,
+                );
                 const sortType = storage.getSheetMeta(sheet.id, "sort") as SortType;
                 sheet.worksNum = musicList.length;
                 migrateV2.migrate(sheet.id, musicList);

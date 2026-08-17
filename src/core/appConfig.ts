@@ -190,7 +190,13 @@ class AppConfig implements IAppConfig {
         if (value === undefined) {
             return undefined;
         }
-        return JSON.parse(value);
+        try {
+            return JSON.parse(value);
+        } catch {
+            // 配置值损坏（如历史版本写入异常/部分写入）时兜底为 undefined，
+            // 避免在启动阶段 JSON.parse 抛异常导致整个应用无法初始化（表现为闪退）
+            return undefined;
+        }
     }
 }
 

@@ -30,8 +30,20 @@ class MusicHistory implements IMusicHistory, IInjectable {
             await this.migrateToMMKV();
         }
 
-        const history = safeParse(musicHistoryStore.getString("history") ?? "[]") as IMusic.IMusicItem[];
-        getDefaultStore().set(musicHistoryAtom, history ?? []);
+        const rawHistory = safeParse(musicHistoryStore.getString("history") ?? "[]") as IMusic.IMusicItem[] | null;
+        // 历史记录可能写入畸形数据（非数组/含 null 项，其他源残留数据常见），
+        // 兜底为空数组并过滤非法项，避免后续 history.filter / 渲染时崩溃
+        const history = Array.isArray(rawHistory)
+            ? rawHistory.filter(
+                  it =>
+                      it &&
+                      typeof it === "object" &&
+                      !Array.isArray(it) &&
+                      (it as any).id !== undefined &&
+                      (it as any).id !== null,
+              )
+            : [];
+        getDefaultStore().set(musicHistoryAtom, history);
     }
 
     async addMusic(musicItem: IMusic.IMusicItem) {
