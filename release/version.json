@@ -1,20 +1,16 @@
 {
-  "version": "1.2.13",
+  "version": "1.2.14",
   "changeLog": [
-    "## v1.2.13 音源切换版",
+    "## v1.2.14 车机息屏暂停 + 播放失败自动换源版",
     "",
-    "- 移除所有旧内置音源（xiaoqiu/xiaowo/xiaoyun/xiaogou/xiaomi/sixyin/qishui）",
-    "- 移除旧默认订阅源（源离插件库）",
-    "- 新默认订阅源：MusicFree 音源库 (https://www.imwzh.com/musicfree.json)",
-    "- 启动时自动清理旧插件缓存和文件",
-    "- JVM 目标版本统一为 17，修复 Kotlin 编译兼容性",
-    "- ProGuard/R8 代码混淆，APK 体积优化",
-    "- TrackPlayer 缓冲区优化",
-    "- 内存清理阈值优化"
+    "- 车载模式：息屏自动暂停播放（设置 → 方向盘控制可开关）",
+    "- 通知栏：默认不显示播放通知，切歌不再发送通知（设置 → 通用可开关）",
+    "- 播放失败：自动按歌名+作者搜索其他音源并换源播放，找不到再跳下一首",
+    "- 根目录开发调试文件不再进入仓库"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.13/MusicFree-1.2.13-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.13/MusicFree-1.2.13-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.13/release/MusicFree-1.2.13-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.14/MusicFree-1.2.14-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.14/MusicFree-1.2.14-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.14/release/MusicFree-1.2.14-universal.apk"
   ]
 }
