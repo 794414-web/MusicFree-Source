@@ -17,6 +17,7 @@ import Network from "@/utils/network";
 import PersistStatus from "@/utils/persistStatus";
 import { getQualityOrder } from "@/utils/qualities";
 import { musicIsPaused } from "@/utils/trackUtils";
+import Toast from "@/utils/toast";
 import EventEmitter from "eventemitter3";
 import { produce } from "immer";
 import { atom, getDefaultStore, useAtomValue } from "jotai";
@@ -513,46 +514,9 @@ class TrackPlayer extends EventEmitter<{
                         }
                     }
                 }
-                // 5.4 没有返回源
+                // 5.4 没有返回源：无可用地址时抛出错误，交由 handlePlayFail 统一处理换源/跳下一首
                 if (!source && !musicItem.url) {
-                    // 插件失效的情况
-                    if (this.configService.getConfig("basic.tryChangeSourceWhenPlayFail")) {
-                        // 重试
-                        const similarMusic = await this.getSimilarMusic(
-                            musicItem,
-                            "music",
-                            () => !this.isCurrentMusic(musicItem),
-                        );
-
-                        if (similarMusic) {
-                            const similarMusicPlugin =
-                                this.pluginManagerService.getByMedia(similarMusic);
-
-                            for (let quality of qualityOrder) {
-                                if (this.isCurrentMusic(musicItem)) {
-                                    source =
-                                        (await similarMusicPlugin?.methods?.getMediaSource(
-                                            similarMusic,
-                                            quality,
-                                        )) ?? null;
-                                    // 5.4.1 获取到真实源
-                                    if (source) {
-                                        this.setQuality(quality);
-                                        break;
-                                    }
-                                } else {
-                                    // 5.4.2 已经切换到其他歌曲了，
-                                    return;
-                                }
-                            }
-                        }
-
-                        if (!source) {
-                            throw new Error(PlayFailReason.INVALID_SOURCE);
-                        }
-                    } else {
-                        throw new Error(PlayFailReason.INVALID_SOURCE);
-                    }
+                    throw new Error(PlayFailReason.INVALID_SOURCE);
                 } else {
                     source = {
                         url: musicItem.url,
@@ -902,12 +866,103 @@ class TrackPlayer extends EventEmitter<{
     }
 
 
+    /**
+     * 播放失败处理：
+     * 1. 若开启"播放失败时尝试更换音源"，先在其他音源中搜索同一首歌（按歌名+作者）并换源播放
+     * 2. 找不到可用音源后，再按设置决定：跳转下一首 或 自动暂停
+     */
     private async handlePlayFail() {
-        // 如果自动跳转下一曲, 500s后自动跳转
+        // 先尝试搜索并切换到其他音源播放当前歌曲，避免直接跳到下一首
+        if (this.configService.getConfig("basic.tryChangeSourceWhenPlayFail")) {
+            const switched = await this.tryPlayWithAnotherSource(
+                this.currentMusic,
+            );
+            if (switched) {
+                return;
+            }
+        }
+        // 换源失败（或未开启换源），按设置处理：未开启自动暂停时跳转下一首
         if (!this.configService.getConfig("basic.autoStopWhenError")) {
             await delay(500);
             await this.skipToNext();
         }
+    }
+
+    /**
+     * 播放失败时，在其他音源中搜索同一首歌（按歌曲名+作者名），找到后切换音源播放。
+     * 换源成功会同步更新播放列表中的当前歌曲与播放器状态，保证后续切歌回来仍使用新音源。
+     * @returns 是否成功换源播放
+     */
+    private async tryPlayWithAnotherSource(
+        musicItem: IMusic.IMusicItem | null | undefined,
+    ): Promise<boolean> {
+        if (!musicItem) {
+            return false;
+        }
+
+        // 1. 在其他音源中搜索同名同作者的歌曲
+        Toast.warn("当前音源失效，正在搜索其他音源...");
+        const similarMusic = await this.getSimilarMusic(
+            musicItem,
+            "music",
+            () => !this.isCurrentMusic(musicItem),
+        );
+        if (!similarMusic) {
+            trace("播放失败，未在其他音源找到可替代歌曲", musicItem.title);
+            return false;
+        }
+
+        // 2. 从新音源获取可播放地址
+        const plugin = this.pluginManagerService.getByMedia(similarMusic);
+        const qualityOrder = getQualityOrder(
+            this.configService.getConfig("basic.defaultPlayQuality") ?? "standard",
+            this.configService.getConfig("basic.playQualityOrder") ?? "asc",
+        );
+        let source: IPlugin.IMediaSourceResult | null = null;
+        for (let quality of qualityOrder) {
+            if (!this.isCurrentMusic(musicItem)) {
+                return false;
+            }
+            source =
+                (await plugin?.methods?.getMediaSource(similarMusic, quality)) ??
+                null;
+            if (source) {
+                this.setQuality(quality);
+                break;
+            }
+        }
+        if (!source || !this.isCurrentMusic(musicItem)) {
+            trace("播放失败，新音源无法获取播放地址", musicItem.title);
+            return false;
+        }
+
+        // 3. 用新音源的信息更新当前歌曲（保持原 id 不变，更新平台与播放地址），实现持久换源
+        const mergedTrack = {
+            ...musicItem,
+            ...similarMusic,
+            id: musicItem.id,
+            platform: similarMusic.platform,
+            url: source.url,
+            headers: source.headers,
+            source: undefined,
+        } as IMusic.IMusicItem;
+
+        // 4. 更新播放列表中的当前歌曲，保证后续切歌回来仍走新音源
+        const playList = this.playList;
+        const currentIndex = this.currentIndex;
+        if (currentIndex >= 0 && currentIndex < playList.length) {
+            const newPlayList = produce(playList, draft => {
+                draft[currentIndex] = mergedTrack;
+            });
+            this.setPlayList(newPlayList);
+        }
+
+        // 5. 播放换源后的歌曲
+        this.setCurrentMusic(mergedTrack);
+        await this.setTrackSource(mergedTrack as Track);
+        Toast.success("音源失效，已切换到其他音源播放");
+        trace("已更换音源播放", mergedTrack);
+        return true;
     }
 
     /**

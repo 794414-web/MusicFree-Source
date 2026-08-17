@@ -97,3 +97,15 @@ web-build/
 ui*.xml
 mock_update_server.py
 screen.png
+
+# 根目录开发调试文件（不上传）
+/*_fixed.kt
+/*_v2.kt
+/*_v2.xml
+/AndroidManifest_v2.xml
+/FloatingWindowManager.kt
+/JsPolyfill.kt
+/LyricParser.kt
+/plugin_analysis.md
+/plugin_repo.b64
+/sample_plugin.js

@@ -139,6 +139,7 @@ interface IFullscreenNotificationModule extends NativeModule {
     startListening: () => Promise<boolean>;
     stopListening: () => Promise<boolean>;
     getCurrentState: () => Promise<string>;
+    getScreenState: () => Promise<string>;
     isSupported: () => Promise<boolean>;
     addListener: (eventName: string) => void;
     removeListeners: (count: number) => void;
@@ -167,6 +168,11 @@ export const FullscreenNotificationModule = {
         if (!FullscreenNotificationNative) return Promise.resolve('off');
         return FullscreenNotificationNative.getCurrentState().catch(() => 'off');
     },
+
+    getScreenState: (): Promise<string> => {
+        if (!FullscreenNotificationNative) return Promise.resolve('on');
+        return FullscreenNotificationNative.getScreenState().catch(() => 'on');
+    },
 };
 
 // ======================== 事件类型 ========================
@@ -187,6 +193,12 @@ export interface SteeringWheelKeyEvent {
 export interface FullscreenStateEvent {
     state: 'on' | 'off';
     action: 'enterFullscreen' | 'exitFullscreen';
+}
+
+/** 屏幕状态事件参数 */
+export interface ScreenStateEvent {
+    state: 'on' | 'off';
+    action: 'screenOn' | 'screenOff';
 }
 
 // ======================== 事件订阅辅助 ========================
@@ -215,5 +227,14 @@ export function onSteeringWheelKey(callback: (event: SteeringWheelKeyEvent) => v
  */
 export function onFullscreenStateChange(callback: (event: FullscreenStateEvent) => void): () => void {
     const subscription = DeviceEventEmitter.addListener('fullscreenStateChanged', callback);
+    return () => subscription.remove();
+}
+
+/**
+ * 监听屏幕状态变化（息屏/亮屏）
+ * @returns 取消监听函数
+ */
+export function onScreenStateChange(callback: (event: ScreenStateEvent) => void): () => void {
+    const subscription = DeviceEventEmitter.addListener('screenStateChanged', callback);
     return () => subscription.remove();
 }

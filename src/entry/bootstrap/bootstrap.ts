@@ -62,7 +62,7 @@ function setupLowMemoryDefaults() {
         ["basic.musicDetailAwake", false],
         ["basic.autoPlayWhenAppStart", false],
         ["basic.notInterrupt", true],
-        ["basic.tryChangeSourceWhenPlayFail", false],
+        ["basic.tryChangeSourceWhenPlayFail", true],
         ["basic.autoStopWhenError", false],
         ["basic.showExitOnNotification", false],
         ["basic.defaultPlayQuality", "standard"],
@@ -77,6 +77,8 @@ function setupLowMemoryDefaults() {
         ["lyric.autoSearchLyric", false],
         ["basic.floatingWindow", false],
         ["basic.steeringWheelControl", false],
+        ["basic.disableNotification", true],
+        ["basic.screenOffStopPlayback", true],
         ["basic.associateLyricType", "input"],
         ["basic.autoMemoryCleanup", true],
         ["basic.memoryCleanupThreshold", 300],
@@ -263,6 +265,7 @@ export async function initTrackPlayer(logger?: IPerfLogger) {
             maxBuffer: 60,
             bufferInterval: 250,
             progressUpdateEventInterval: 2,
+            autoUpdateMetadata: false,
         });
     } catch (e: any) {
         if (
@@ -300,6 +303,13 @@ export async function initTrackPlayer(logger?: IPerfLogger) {
         compactCapabilities: capabilities,
         notificationCapabilities: [...capabilities, Capability.SeekTo],
     });
+
+    if (Config.getConfig("basic.disableNotification") ?? true) {
+        try {
+            await RNTrackPlayer.clearNowPlayingMetadata();
+        } catch {}
+    }
+
     logger?.mark("播放器初始化完成");
     trace("播放器初始化完成");
 

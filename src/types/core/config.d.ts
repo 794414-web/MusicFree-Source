@@ -29,6 +29,7 @@ export interface IAppConfigProperties {
     "basic.lazyLoadPlugin": boolean;
     "basic.associateLyricType": "input" | "search";
     "basic.showExitOnNotification": boolean;
+    "basic.disableNotification": boolean;
     "basic.musicOrderInLocalSheet": SortType;
     "basic.tryChangeSourceWhenPlayFail": boolean;
 
@@ -43,6 +44,9 @@ export interface IAppConfigProperties {
 
     // Steering Wheel Control（方向盘控制，仅 Android，哪吒车机适配）
     "basic.steeringWheelControl": boolean;
+
+    // Screen Off Stop Playback（息屏关闭播放，仅 Android，哪吒车机适配）
+    "basic.screenOffStopPlayback": boolean;
 
     // Memory Auto Cleanup（内存自动清理）
     "basic.autoMemoryCleanup": boolean;

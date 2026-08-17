@@ -131,6 +131,7 @@ export default function BasicSetting() {
     const lazyLoadPlugin = useAppConfig("basic.lazyLoadPlugin");
     const associateLyricType = useAppConfig("basic.associateLyricType");
     const showExitOnNotification = useAppConfig("basic.showExitOnNotification");
+    const disableNotification = useAppConfig("basic.disableNotification");
     const musicOrderInLocalSheet = useAppConfig("basic.musicOrderInLocalSheet");
     const tryChangeSourceWhenPlayFail = useAppConfig("basic.tryChangeSourceWhenPlayFail");
     const autoMemoryCleanup = useAppConfig("basic.autoMemoryCleanup");
@@ -193,6 +194,11 @@ export default function BasicSetting() {
                     t("basicSettings.showExitOnNotification"),
                     "basic.showExitOnNotification",
                     showExitOnNotification ?? false,
+                ),
+                createSwitch(
+                    t("basicSettings.disableNotification"),
+                    "basic.disableNotification",
+                    disableNotification ?? true,
                 ),
             ],
         },
@@ -286,7 +292,7 @@ export default function BasicSetting() {
                 createSwitch(
                     t("basicSettings.tryChangeSourceWhenPlayFail"),
                     "basic.tryChangeSourceWhenPlayFail",
-                    tryChangeSourceWhenPlayFail ?? false,
+                    tryChangeSourceWhenPlayFail ?? true,
                 ),
                 createSwitch(
                     t("basicSettings.autoStopWhenError"),
@@ -1206,6 +1212,7 @@ const floatingStyles = StyleSheet.create({
 
 function SteeringWheelSetting() {
     const enableSteering = useAppConfig("basic.steeringWheelControl");
+    const enableScreenOffStop = useAppConfig("basic.screenOffStopPlayback");
     const { t } = useI18N();
 
     const onToggleSteering = (newValue: boolean) => {
@@ -1216,11 +1223,22 @@ function SteeringWheelSetting() {
         Config.setConfig("basic.steeringWheelControl", newValue);
     };
 
+    const onToggleScreenOffStop = (newValue: boolean) => {
+        Config.setConfig("basic.screenOffStopPlayback", newValue);
+    };
+
     const enableSwitch = createSwitch(
         t("basicSettings.steeringWheel.enable"),
         "basic.steeringWheelControl",
         enableSteering ?? true,
         onToggleSteering,
+    );
+
+    const screenOffSwitch = createSwitch(
+        t("basicSettings.steeringWheel.screenOffStopPlayback"),
+        "basic.screenOffStopPlayback",
+        enableScreenOffStop ?? true,
+        onToggleScreenOffStop,
     );
 
     return (
@@ -1231,6 +1249,13 @@ function SteeringWheelSetting() {
                 onPress={enableSwitch.onPress}>
                 <ListItem.Content title={enableSwitch.title} />
                 {enableSwitch.right}
+            </ListItem>
+            <ListItem
+                withHorizontalPadding
+                heightType="small"
+                onPress={screenOffSwitch.onPress}>
+                <ListItem.Content title={screenOffSwitch.title} />
+                {screenOffSwitch.right}
             </ListItem>
             <ThemeText style={steeringStyles.hint}>
                 {t("basicSettings.steeringWheel.hint")}

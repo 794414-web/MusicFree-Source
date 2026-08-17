@@ -290,6 +290,7 @@ export interface ILanguageData {
     "basicSettings.associateLyricType.input": string; // 输入
     "basicSettings.associateLyricType.search": string; // 搜索
     "basicSettings.showExitOnNotification": string; // 通知中显示退出
+    "basicSettings.disableNotification": string; // 禁用通知栏
     "basicSettings.sheetAndAlbum": string; // 歌单和专辑
     "basicSettings.clickMusicInSearch": string; // 点击搜索中的音乐
     "basicSettings.clickMusicInSearch.playMusic": string; // 播放歌曲
@@ -365,6 +366,8 @@ export interface ILanguageData {
     "basicSettings.steeringWheel.enable": string; // 开启方向盘控制
     "basicSettings.steeringWheel.notSupported": string; // 当前设备不支持方向盘控制
     "basicSettings.steeringWheel.hint": string; // 仅哪吒车机适用，非车机可关闭
+    "basicSettings.steeringWheel.screenOffStopPlayback": string; // 息屏自动暂停播放
+    "basicSettings.steeringWheel.screenOffStopPlayback.hint": string; // 息屏自动暂停播放提示
 
     "basicSettings.cache": string; // 缓存
     "basicSettings.cache.musicCacheLimit": string; // 音乐缓存上限
