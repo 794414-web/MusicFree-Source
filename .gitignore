@@ -99,6 +99,7 @@ mock_update_server.py
 screen.png
 
 # 根目录开发调试文件（不上传）
+/NUL
 /*_fixed.kt
 /*_v2.kt
 /*_v2.xml
