@@ -87,7 +87,7 @@ export default function AssociateLrc(props: INewMusicSheetProps) {
                         }}
                     />
 
-                    <View style={styles.inputRow}>
+                    <View style={style.inputRow}>
                         <TextInput
                             value={input}
                             onChangeText={_ => {
@@ -106,13 +106,13 @@ export default function AssociateLrc(props: INewMusicSheetProps) {
                         />
                         <TouchableOpacity
                             style={[
-                                styles.pasteBtn,
+                                style.pasteBtn,
                                 { backgroundColor: colors.primary },
                             ]}
                             onPress={handlePaste}>
                             <ThemeText
                                 fontWeight="medium"
-                                fontColor="white"
+                                color="#fff"
                                 fontSize="subTitle">
                                 {t("common.paste")}
                             </ThemeText>

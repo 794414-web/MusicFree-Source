@@ -112,7 +112,7 @@ export default function SetUserVariables(props: IUserVariablesProps) {
                                             onPress={() => handlePaste(it.key)}>
                                             <ThemeText
                                                 fontWeight="medium"
-                                                fontColor="white"
+                                                color="#fff"
                                                 fontSize="subTitle">
                                                 {t("common.paste")}
                                             </ThemeText>

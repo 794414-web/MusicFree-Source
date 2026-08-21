@@ -82,6 +82,87 @@ function searchOneSource(source, query, page) {
         });
 }
 
+// 解析用户输入的歌单链接 / 歌单ID，返回 { source, id }，无法识别返回 null
+// 支持常见国内平台：网易云(默认)、QQ音乐、酷狗、酷我、咪咕，均可映射到 GD 聚合音源
+function parsePlaylistInput(text) {
+    var s = String(text || "").trim();
+    if (!s) return null;
+    var source = null;
+    var id = null;
+    // 网易云：兼容 PC 分享(music.163.com/#/playlist?id=)、移动端(y.music.163.com/m/playlist?id=)、
+    // 简洁链接(music.163.com/playlist?id= 或 /playlist/xxx)、纯数字ID
+    var m = s.match(/(?:music\.163\.com|y\.music\.163\.com)[^#?\s]*(?:#\/)?playlist(?:\?[^\s]*?id=|\/)(\d+)/i);
+    if (m) { source = "netease"; id = m[1]; }
+    // QQ音乐：y.qq.com .../playlist/xxx 或 .../playlist?id=xxx
+    if (!source) {
+        var q = s.match(/y\.qq\.com[^\s]*?playlist(?:\/|(?:\?[^\s]*?id=))(\d+)/i);
+        if (q) { source = "tencent"; id = q[1]; }
+    }
+    // QQ音乐分享页：i.y.qq.com/n2/m/share/details/taoge.html? ... id=xxx
+    if (!source) {
+        var q2 = s.match(/i\.y\.qq\.com[^\s]*?id=(\d+)/i);
+        if (q2) { source = "tencent"; id = q2[1]; }
+    }
+    // 酷狗：kugou.com/yy/special/single/{id}
+    if (!source) {
+        var kg = s.match(/kugou\.com[^#\s]*special\/single\/([a-z0-9]+)/i);
+        if (kg) { source = "kugou"; id = kg[1]; }
+    }
+    // 酷我：kuwo.cn/playlist_detail/{id}
+    if (!source) {
+        var kw = s.match(/kuwo\.cn[^#\s]*playlist[^\/]*\/(\d+)/i);
+        if (kw) { source = "kuwo"; id = kw[1]; }
+    }
+    // 咪咕：music.migu.cn 歌单链接 m.migu.cn/playlist/{id}
+    if (!source) {
+        var mg = s.match(/migu\.cn[^#\s]*playlist[^\/]*\/(\d+)/i);
+        if (mg) { source = "migu"; id = mg[1]; }
+    }
+    // 纯数字ID默认网易云歌单
+    if (!source && /^\d+$/.test(s)) { source = "netease"; id = s; }
+    if (!source || !id) return null;
+    return { source: source, id: id };
+}
+
+// 将歌单接口返回的单曲格式化为 MusicFree 歌曲条目
+// source 为发起歌单的音源，歌单内所有歌曲均按该音源取播放地址 / 歌词
+function formatPlaylistTrack(track, source) {
+    var trackId = String(track.id);
+    var album = track.al || {};
+    var picId = album.pic || album.picUrl || null;
+    var artists = (track.ar || []).map(function (a) { return a.name; }).join(" / ");
+    return {
+        id: source + "-" + trackId,
+        platform: "GD音乐台",
+        title: track.name || "",
+        artist: artists || "",
+        album: album.name || "",
+        _gdSource: source,
+        _gdId: trackId,
+        _gdPicId: picId,
+        _gdLyricId: trackId,
+    };
+}
+
+// 源记忆：曲目ID -> 上次成功播放的源
+// 播放时优先使用上次成功的源，避免每次歌单都从默认（可能是失效的）源开始，节省切换时间
+// 仅进程内生效，App 重启后回到默认源；换源成功后也会写回歌单条目（由 App 层持久化）
+var SOURCE_MEMORY = {};
+
+// 构建候选音源顺序：记忆源 -> 默认源 -> 其他稳定源
+function buildSourceCandidates(musicItem) {
+    var defaultSource = musicItem._gdSource || "netease";
+    var id = String(musicItem._gdId || musicItem.id || "");
+    var candidates = [];
+    var remembered = id ? SOURCE_MEMORY[id] : null;
+    if (remembered && remembered !== defaultSource) candidates.push(remembered);
+    if (candidates.indexOf(defaultSource) === -1) candidates.push(defaultSource);
+    STABLE_SOURCES.forEach(function (s) {
+        if (candidates.indexOf(s) === -1) candidates.push(s);
+    });
+    return { candidates: candidates, id: id, defaultSource: defaultSource };
+}
+
 module.exports = {
     platform: "GD音乐台",
     author: "GD Studio",
@@ -95,6 +176,11 @@ module.exports = {
             "音源由 GD音乐台(music.gdstudio.xyz) 聚合 API 提供，仅限学习交流使用",
             "一次搜索聚合 网易云 / JOOX / B站 等稳定源结果",
             "该接口有访问频率限制（5分钟内50次），请勿频繁搜索",
+        ],
+        importMusicSheet: [
+            "目前可导入网易云歌单：粘贴歌单链接或歌单ID，纯数字ID 默认按网易云处理",
+            "GD聚合接口暂未开放 QQ音乐 / 酷狗 / 酷我等歌单，这类链接可能返回空",
+            "该接口有访问频率限制（5分钟内50次），请勿频繁导入",
         ],
     },
 
@@ -118,18 +204,26 @@ module.exports = {
         });
     },
 
-    // 获取播放地址：优先目标音质，失败自动降级到 320
+    // 获取播放地址：优先记忆源 -> 默认源 -> 其他稳定源；每源内优先目标音质，失败降级 320
+    // 成功后记录到源记忆，下次播放直接使用，避免每次歌单都从失效的默认源重新切换
     getMediaSource: function (musicItem, quality) {
-        const source = musicItem._gdSource || "netease";
-        const id = musicItem._gdId || musicItem.id;
-        const brList = [QUALITY_BR[quality] || 320, 320];
-        let idx = 0;
-        function tryBr() {
-            if (idx >= brList.length) {
+        var srcInfo = buildSourceCandidates(musicItem);
+        var brList = [QUALITY_BR[quality] || 320, 320];
+        var candidateIdx = 0;
+        var brIdx = 0;
+        function nextCandidate() {
+            if (candidateIdx >= srcInfo.candidates.length) {
                 return Promise.resolve(null);
             }
-            const br = brList[idx];
-            idx += 1;
+            var source = srcInfo.candidates[candidateIdx];
+            var id = musicItem._gdId || musicItem.id;
+            if (brIdx >= brList.length) {
+                candidateIdx += 1;
+                brIdx = 0;
+                return nextCandidate();
+            }
+            var br = brList[brIdx];
+            brIdx += 1;
             return requestGD({
                 types: "url",
                 source: source,
@@ -138,21 +232,24 @@ module.exports = {
             })
                 .then(function (data) {
                     if (data && data.url) {
-                        return { url: data.url };
+                        // 记录成功源，下次播放直接使用
+                        if (srcInfo.id) SOURCE_MEMORY[srcInfo.id] = source;
+                        return { url: data.url, _gdUsedSource: source };
                     }
-                    return tryBr();
+                    return nextCandidate();
                 })
                 .catch(function () {
-                    return tryBr();
+                    return nextCandidate();
                 });
         }
-        return tryBr();
+        return nextCandidate();
     },
 
-    // 获取歌词（含翻译）
+    // 获取歌词（含翻译）：优先使用上次成功播放的源
     getLyric: function (musicItem) {
-        const source = musicItem._gdSource || "netease";
-        const id = musicItem._gdLyricId || musicItem._gdId || musicItem.id;
+        var srcInfo = buildSourceCandidates(musicItem);
+        var source = srcInfo.candidates[0];
+        var id = musicItem._gdLyricId || musicItem._gdId || musicItem.id;
         return requestGD({
             types: "lyric",
             source: source,
@@ -190,6 +287,32 @@ module.exports = {
                     return { artwork: data.url };
                 }
                 return null;
+            })
+            .catch(function () {
+                return null;
+            });
+    },
+
+    // 导入歌单：解析链接/ID 后请求 GD 聚合歌单接口，返回歌曲列表
+    // 返回 null 或空数组表示无法识别/歌单为空，由 App 提示
+    importMusicSheet: function (urlLike) {
+        var parsed = parsePlaylistInput(urlLike);
+        if (!parsed) return Promise.resolve(null);
+        return requestGD({
+            types: "playlist",
+            source: parsed.source,
+            id: parsed.id,
+            count: 50,
+            pages: 1,
+        })
+            .then(function (data) {
+                if (!data || !data.playlist || !Array.isArray(data.playlist.tracks)) {
+                    return [];
+                }
+                return data.playlist.tracks
+                    .map(function (track) {
+                        return formatPlaylistTrack(track, parsed.source);
+                    });
             })
             .catch(function () {
                 return null;

@@ -89,7 +89,7 @@ export default function CreateMusicSheet(props: ICreateMusicSheetProps) {
                             onPress={handlePaste}>
                             <ThemeText
                                 fontWeight="medium"
-                                fontColor="white"
+                                color="#fff"
                                 fontSize="subTitle">
                                 {t("common.paste")}
                             </ThemeText>

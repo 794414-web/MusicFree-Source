@@ -15,10 +15,22 @@ interface IApkUpdateModule extends NativeModule {
         download?: string[];
     }>;
     downloadAndInstall: (url: string) => Promise<number>;
-    getDownloadProgress: () => Promise<number>;
+    getDownloadProgress: () => Promise<{
+        progress: number;
+        speed: number;
+        downloadedBytes: number;
+        totalBytes: number;
+    }>;
     getLastError: () => Promise<string>;
     addListener: (eventName: string) => void;
     removeListeners: (count: number) => void;
+}
+
+export interface IDownloadProgress {
+    progress: number;
+    speed: number;
+    downloadedBytes: number;
+    totalBytes: number;
 }
 
 const ApkUpdateNative: IApkUpdateModule | undefined = NativeModules.ApkUpdate;
@@ -46,9 +58,16 @@ export const ApkUpdateModule = {
         });
     },
 
-    getDownloadProgress: (): Promise<number> => {
-        if (!ApkUpdateNative) return Promise.resolve(-1);
-        return ApkUpdateNative.getDownloadProgress().catch(() => -1);
+    getDownloadProgress: (): Promise<IDownloadProgress> => {
+        if (!ApkUpdateNative) {
+            return Promise.resolve({ progress: -1, speed: 0, downloadedBytes: 0, totalBytes: 0 });
+        }
+        return ApkUpdateNative.getDownloadProgress().catch(() => ({
+            progress: -1,
+            speed: 0,
+            downloadedBytes: 0,
+            totalBytes: 0,
+        }));
     },
 
     getLastError: (): Promise<string> => {

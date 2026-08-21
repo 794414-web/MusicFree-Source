@@ -14,8 +14,7 @@ import rpx from "@/utils/rpx";
 import Toast from "@/utils/toast";
 import { FlashList } from "@shopify/flash-list";
 import React, { useMemo, useState } from "react";
-import { StyleSheet, View } from "react-native";
-import { TouchableWithoutFeedback } from "react-native-gesture-handler";
+import { StyleSheet, TouchableWithoutFeedback, View } from "react-native";
 
 export default function Sheets() {
     const [index, setIndex] = useState(0);
@@ -40,7 +39,6 @@ export default function Sheets() {
         <>
             <View style={styles.subTitleContainer}>
                 <TouchableWithoutFeedback
-                    style={styles.tabContainer}
                     accessible
                     accessibilityLabel={t("home.myPlaylistsCount.a11y", {
                         count: allSheets.length,
@@ -48,26 +46,27 @@ export default function Sheets() {
                     onPress={() => {
                         setIndex(0);
                     }}>
-                    <ThemeText
-                        accessible={false}
-                        fontSize="title"
-                        style={[
-                            styles.tabText,
-                            index === 0 ? selectedTabTextStyle : null,
-                        ]}>
-                        {t("home.myPlaylists")}
-                    </ThemeText>
-                    <ThemeText
-                        accessible={false}
-                        fontColor="textSecondary"
-                        fontSize="subTitle"
-                        style={styles.tabText}>
-                        {" "}
-                        ({allSheets.length})
-                    </ThemeText>
+                    <View style={styles.tabContainer}>
+                        <ThemeText
+                            accessible={false}
+                            fontSize="title"
+                            style={[
+                                styles.tabText,
+                                index === 0 ? selectedTabTextStyle : null,
+                            ]}>
+                            {t("home.myPlaylists")}
+                        </ThemeText>
+                        <ThemeText
+                            accessible={false}
+                            fontColor="textSecondary"
+                            fontSize="subTitle"
+                            style={styles.tabText}>
+                            {" "}
+                            ({allSheets.length})
+                        </ThemeText>
+                    </View>
                 </TouchableWithoutFeedback>
                 <TouchableWithoutFeedback
-                    style={styles.tabContainer}
                     accessible
                     accessibilityLabel={t("home.starredPlaylistsCount.a11y", {
                         count: allSheets.length,
@@ -75,23 +74,25 @@ export default function Sheets() {
                     onPress={() => {
                         setIndex(1);
                     }}>
-                    <ThemeText
-                        fontSize="title"
-                        accessible={false}
-                        style={[
-                            styles.tabText,
-                            index === 1 ? selectedTabTextStyle : null,
-                        ]}>
-                        {t("home.starredPlaylists")}
-                    </ThemeText>
-                    <ThemeText
-                        fontColor="textSecondary"
-                        fontSize="subTitle"
-                        accessible={false}
-                        style={styles.tabText}>
-                        {" "}
-                        ({staredSheets.length})
-                    </ThemeText>
+                    <View style={styles.tabContainer}>
+                        <ThemeText
+                            fontSize="title"
+                            accessible={false}
+                            style={[
+                                styles.tabText,
+                                index === 1 ? selectedTabTextStyle : null,
+                            ]}>
+                            {t("home.starredPlaylists")}
+                        </ThemeText>
+                        <ThemeText
+                            fontColor="textSecondary"
+                            fontSize="subTitle"
+                            accessible={false}
+                            style={styles.tabText}>
+                            {" "}
+                            ({staredSheets.length})
+                        </ThemeText>
+                    </View>
                 </TouchableWithoutFeedback>
                 <View style={styles.more}>
                     <IconButton

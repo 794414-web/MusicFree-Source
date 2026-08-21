@@ -56,7 +56,7 @@ function MiniPlayer() {
                         showPanel("PlayList");
                     }}
                     color={colors.musicBarText}
-                    style={[style.actionIcon]}
+                    style={[styles.actionIcon]}
                 />
             </View>
         </View>

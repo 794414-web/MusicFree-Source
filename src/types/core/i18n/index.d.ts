@@ -28,6 +28,10 @@ export interface ILanguageData {
     "common.local": string; // 本地
     "common.sure": string; // 确定
     "common.confirm": string; // 确认
+    "common.paste": string; // 粘贴
+    "common.pasted": string; // 已粘贴
+    "common.clipboardEmpty": string; // 剪贴板为空
+    "common.pasteFail": string; // 粘贴失败
     "common.view": string; // 查看
     "common.open": string; // 打开
     "common.username": string; // 用户名

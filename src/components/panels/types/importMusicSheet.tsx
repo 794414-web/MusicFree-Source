@@ -45,7 +45,8 @@ export default function ImportMusicSheet() {
                                                 placeholder: t("panel.importMusicSheet.placeholder"),
                                                 hints: plugin.instance.hints
                                                     ?.importMusicSheet,
-                                                maxLength: 1000,                                                async onOk(text, closePanel) {
+                                                maxLength: 1000,
+                                                async onOk(text, closePanel) {
                                                     Toast.success(
                                                         t("panel.importMusicSheet.importing"),
                                                     );

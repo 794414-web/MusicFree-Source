@@ -12,6 +12,7 @@ import PersistStatus from "@/utils/persistStatus";
 import { useI18N } from "@/core/i18n";
 import { ApkUpdateModule, onApkUpdateEvent } from "@/native/apkUpdate";
 import Toast from "@/utils/toast";
+import { sizeFormatter } from "@/utils/fileUtils";
 
 interface IDownloadDialogProps {
     version: string;
@@ -24,17 +25,35 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
     const [skipState, setSkipState] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const [progress, setProgress] = useState(0);
+    const [speed, setSpeed] = useState(0);
+    const [downloadedBytes, setDownloadedBytes] = useState(0);
+    const [totalBytes, setTotalBytes] = useState(0);
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
     const { t } = useI18N();
 
+    /** 格式化网速 */
+    const speedText =
+        speed > 0 ? sizeFormatter(speed) + "/s" : "";
+
+    /** 进度文本：有总量显示百分比，否则显示已下载体积 */
+    const progressText =
+        totalBytes > 0
+            ? `${progress}%`
+            : downloadedBytes > 0
+              ? `已下载 ${sizeFormatter(downloadedBytes)}`
+              : `0%`;
+
+    const clearTimer = () => {
+        if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+        }
+    };
+
     // 清理定时器
     useEffect(() => {
-        return () => {
-            if (timerRef.current) {
-                clearInterval(timerRef.current);
-            }
-        };
+        return clearTimer;
     }, []);
 
     // 监听安装事件
@@ -42,29 +61,47 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
         const unsubscribe = onApkUpdateEvent(event => {
             if (event.type === "installing") {
                 setDownloading(false);
-                if (timerRef.current) {
-                    clearInterval(timerRef.current);
-                    timerRef.current = null;
-                }
+                clearTimer();
                 hideDialog();
             } else if (event.type === "error") {
                 setDownloading(false);
-                if (timerRef.current) {
-                    clearInterval(timerRef.current);
-                    timerRef.current = null;
+                clearTimer();
+                // 主链接失败，自动尝试备用链接
+                if (!isBackupRef.current && backUrl) {
+                    Toast.warn("下载失败，正在尝试备用链接...");
+                    setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
+                } else {
+                    Toast.warn("更新失败: " + event.message);
                 }
-                Toast.warn("更新失败: " + event.message);
             }
         });
         return unsubscribe;
-    }, []);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [backUrl]);
+
+    // 备用链接重入标记
+    const isBackupRef = useRef(false);
 
     /** 直接下载并安装 */
     const handleDownloadAndInstall = async (url: string, isBackup = false) => {
         if (downloading) return;
+        isBackupRef.current = isBackup;
         setDownloading(true);
         setProgress(0);
+        setSpeed(0);
+        setDownloadedBytes(0);
+        setTotalBytes(0);
         PersistStatus.set("app.skipVersion", undefined);
+        clearTimer();
+
+        const tryBackup = (msg: string) => {
+            if (!isBackup && backUrl) {
+                Toast.warn(msg);
+                setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
+            } else {
+                Toast.warn(msg);
+            }
+        };
 
         try {
             if (!ApkUpdateModule.isSupported()) {
@@ -74,94 +111,74 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                 return;
             }
 
-            const downloadId = await ApkUpdateModule.downloadAndInstall(url);
+            await ApkUpdateModule.downloadAndInstall(url);
 
             let stalledCount = 0;
-            let lastProgress = -1;
+            let lastDownloaded = -1;
             let failedReported = false;
             const startTime = Date.now();
-            const TOTAL_TIMEOUT_MS = 90_000;
+            const TOTAL_TIMEOUT_MS = 180_000;
 
             timerRef.current = setInterval(async () => {
                 try {
-                    const p = await ApkUpdateModule.getDownloadProgress();
+                    const result = await ApkUpdateModule.getDownloadProgress();
+                    const p = result?.progress ?? -1;
 
+                    // 下载失败：返回 -1 且非备用，自动切换备用链接
                     if (p === -1) {
                         if (!failedReported) {
                             failedReported = true;
                             setDownloading(false);
-                            if (timerRef.current) {
-                                clearInterval(timerRef.current);
-                                timerRef.current = null;
-                            }
+                            clearTimer();
                             const err = await ApkUpdateModule.getLastError();
-                            Toast.warn("下载失败: " + (err || "未知错误"));
-                            // 主链接失败，自动尝试备用链接
                             if (!isBackup && backUrl) {
-                                Toast.warn("正在尝试备用链接...");
-                                setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
+                                tryBackup("下载失败，正在尝试备用链接...");
+                            } else {
+                                Toast.warn("下载失败: " + (err || "未知错误"));
                             }
                         }
                         return;
                     }
 
-                    if (p >= 0) {
-                        setProgress(p);
-                    }
+                    // 更新进度与网速
+                    setProgress(p);
+                    setSpeed(result?.speed ?? 0);
+                    setDownloadedBytes(result?.downloadedBytes ?? 0);
+                    setTotalBytes(result?.totalBytes ?? 0);
 
+                    // 下载完成（进度 100 且文件校验通过），等待安装事件
                     if (p >= 100) {
-                        if (timerRef.current) {
-                            clearInterval(timerRef.current);
-                            timerRef.current = null;
-                        }
+                        clearTimer();
                         return;
                     }
 
                     // 总超时检测
                     if (Date.now() - startTime > TOTAL_TIMEOUT_MS) {
-                        if (timerRef.current) {
-                            clearInterval(timerRef.current);
-                            timerRef.current = null;
-                        }
                         setDownloading(false);
-                        Toast.warn("下载超时，尝试备用链接...");
-                        if (!isBackup && backUrl) {
-                            setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
-                        }
+                        clearTimer();
+                        tryBackup("下载超时，正在尝试备用链接...");
                         return;
                     }
 
-                    if (p === lastProgress) {
+                    // 停滞检测：以字节数为基准，60 秒无增长则认为卡住
+                    const dl = result?.downloadedBytes ?? 0;
+                    if (dl === lastDownloaded) {
                         stalledCount++;
-                        // 30秒无变化则尝试备用链接
                         if (stalledCount >= 60) {
-                            if (timerRef.current) {
-                                clearInterval(timerRef.current);
-                                timerRef.current = null;
-                            }
                             setDownloading(false);
-                            if (!isBackup && backUrl) {
-                                Toast.warn("下载卡住，切换备用链接...");
-                                setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
-                            } else {
-                                Toast.warn("下载速度过慢，请手动尝试备用链接");
-                            }
+                            clearTimer();
+                            tryBackup("下载卡住，正在切换备用链接...");
                         }
                     } else {
                         stalledCount = 0;
-                        lastProgress = p;
+                        lastDownloaded = dl;
                     }
                 } catch (_) {}
-            }, 500);
+            }, 1000);
         } catch (e: any) {
             setDownloading(false);
-            const msg = e?.message || "未知错误";
-            Toast.warn("下载启动失败: " + msg);
-            // 主链接启动失败，自动尝试备用链接
-            if (!isBackup && backUrl) {
-                Toast.warn("正在尝试备用链接...");
-                setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
-            }
+            clearTimer();
+            tryBackup("下载启动失败: " + (e?.message || "未知错误"));
         }
     };
 
@@ -190,12 +207,19 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                     <View style={style.progressRow}>
                         <ActivityIndicator size="small" />
                         <ThemeText style={style.progressText}>
-                            正在下载... {progress}%
+                            {progressText}
                         </ThemeText>
                     </View>
                     <View style={style.progressTrack}>
-                        <View style={[style.progressFill, { width: `${progress}%` }]} />
+                        <View style={[style.progressFill, { width: `${Math.min(progress, 100)}%` }]} />
                     </View>
+                    {speedText ? (
+                        <View style={style.speedRow}>
+                            <ThemeText style={style.speedText}>
+                                {speedText}
+                            </ThemeText>
+                        </View>
+                    ) : null}
                 </View>
             )}
 
@@ -286,6 +310,15 @@ const style = StyleSheet.create({
         backgroundColor: "rgba(128,128,128,0.2)",
         borderRadius: rpx(4),
         overflow: "hidden",
+    },
+    speedRow: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: rpx(8),
+    },
+    speedText: {
+        fontSize: rpx(22),
+        opacity: 0.7,
     },
     progressFill: {
         height: "100%",

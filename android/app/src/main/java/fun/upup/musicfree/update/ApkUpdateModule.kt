@@ -1,13 +1,11 @@
 package `fun`.upup.musicfree.update
 
-import android.app.DownloadManager
 import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageInstaller
-import android.database.Cursor
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
@@ -28,17 +26,18 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+import kotlin.math.min
 
 /**
  * APK 下载并覆盖安装模块
  *
  * 下载策略：
- * 1. 优先使用系统 DownloadManager（可显示下载通知、断点续传）
- * 2. 若 DownloadManager 失败（返回 -1 或抛出异常），回退到 OkHttp 直接下载
- *    - OkHttp 支持自动跟随重定向、HTTPS、大文件
- *    - 特别适配 GitHub Release 的多层重定向链
- * 3. 下载完成后使用 PackageInstaller 覆盖安装
+ * - 统一使用 OkHttp 流式直连下载（进度由字节精确控制，网速可实时计算）
+ * - 抛弃系统 DownloadManager（国产 ROM 上易卡住/报告 100% 但文件未写完）
+ * - 下载完成后校验文件大小与 contentLength 一致，避免"进度 100 但安装失败"
+ * - 下载失败通过事件 + getDownloadProgress 返回 -1 通知 JS 层自动切换备用链接
  */
 class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext) {
@@ -48,22 +47,29 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
         private const val APK_FILE_NAME = "MusicFree-update.apk"
         private const val EVENT_NAME = "apkUpdateProgress"
         private const val ACTION_INSTALL_RESULT = "fun.upup.musicfree.INSTALL_RESULT"
-        private const val EXTRA_SESSION_ID = "extra_session_id"
     }
 
-    private var downloadId: Long = -1
-    private var downloadReceiverRegistered = false
     private var installReceiverRegistered = false
+
+    @Volatile
     private var lastError: String = ""
+    @Volatile
     private var isDownloading = false
-    private var useOkHttpFallback = false
-    private var fallbackDownloadedBytes = 0L
-    private var fallbackTotalBytes = 0L
-    private var lastProgressReportTime = 0L
-    private var noProgressCount = 0
-    private var downloadStartTime = 0L
-    private var dmTotalTimeoutCount = 0
-    private val DOWNLOAD_MAX_TIME_MS = 60_000L
+    @Volatile
+    private var downloadedBytes = 0L
+    @Volatile
+    private var totalBytes = 0L
+    @Volatile
+    private var downloadFinishedVerified = false
+    // 网速采样
+    @Volatile
+    private var currentSpeedBps = 0L
+    @Volatile
+    private var speedSampleBytes = 0L
+    @Volatile
+    private var speedSampleTime = 0L
+    private var currentDownloadUrl: String = ""
+
     private val httpClient by lazy {
         OkHttpClient.Builder()
             .followRedirects(true)
@@ -72,41 +78,6 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
             .readTimeout(60, TimeUnit.SECONDS)
             .writeTimeout(60, TimeUnit.SECONDS)
             .build()
-    }
-
-    private val downloadCompleteReceiver = object : BroadcastReceiver() {
-        override fun onReceive(context: Context?, intent: Intent?) {
-            val id = intent?.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1) ?: -1
-            if (id == downloadId && downloadId != -1L) {
-                Log.d(TAG, "系统下载完成, downloadId=$id")
-                val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                val query = DownloadManager.Query().setFilterById(downloadId)
-                var downloadSuccess = false
-                dm.query(query)?.use { cursor ->
-                    if (cursor.moveToFirst()) {
-                        val status = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                        if (status == DownloadManager.STATUS_SUCCESSFUL) {
-                            downloadSuccess = true
-                        } else {
-                            val reason = cursor.getInt(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
-                            lastError = getDownloadFailReason(reason)
-                            Log.e(TAG, "系统下载失败: $lastError")
-                        }
-                    }
-                }
-                if (downloadSuccess) {
-                    isDownloading = false
-                    installApk()
-                } else {
-                    isDownloading = false
-                    emitEvent("error", lastError)
-                }
-                try {
-                    reactContext.unregisterReceiver(this)
-                    downloadReceiverRegistered = false
-                } catch (_: Exception) {}
-            }
-        }
     }
 
     private val installResultReceiver = object : BroadcastReceiver() {
@@ -145,8 +116,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
 
     /**
      * 检查更新（原生 OkHttp 实现，直接下载静态 version.json）
-     * 多 URL 依次尝试，全部失败才报错。
-     * 静态文件方案，不依赖任何平台 API，简单稳定。
+     * 多 URL 依次尝试，全部失败才报错。静态文件方案，简单稳定。
      */
     @ReactMethod
     fun checkUpdate(currentVersion: String, promise: Promise) {
@@ -266,189 +236,167 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
     }
 
     /**
-     * 下载 APK 并覆盖安装
-     * 优先系统 DownloadManager，失败时回退 OkHttp 直接下载
+     * 下载 APK 并覆盖安装（OkHttp 直连优先，进度/网速精确可控）
      */
     @ReactMethod
     fun downloadAndInstall(url: String, promise: Promise) {
         lastError = ""
-        useOkHttpFallback = false
-        fallbackDownloadedBytes = 0L
-        fallbackTotalBytes = 0L
-        lastProgressReportTime = System.currentTimeMillis()
-        noProgressCount = 0
-        downloadStartTime = System.currentTimeMillis()
-        dmTotalTimeoutCount = 0
+        isDownloading = true
+        downloadFinishedVerified = false
+        downloadedBytes = 0L
+        totalBytes = 0L
+        currentSpeedBps = 0L
+        speedSampleBytes = 0L
+        speedSampleTime = 0L
         currentDownloadUrl = url
 
         if (url.isBlank()) {
             lastError = "下载地址为空"
+            isDownloading = false
             promise.reject("INVALID_URL", lastError)
             return
         }
 
         Log.d(TAG, "开始下载: $url")
-        isDownloading = true
-
-        try {
-            val apkFile = File(
-                reactContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                APK_FILE_NAME
-            )
-            if (apkFile.exists()) {
-                apkFile.delete()
-            }
-
-            val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            val request = DownloadManager.Request(Uri.parse(url)).apply {
-                setTitle("MusicFree 更新")
-                setDescription("正在下载最新版本 APK...")
-                setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE)
-                setDestinationInExternalFilesDir(
-                    reactContext,
-                    Environment.DIRECTORY_DOWNLOADS,
-                    APK_FILE_NAME
-                )
-                setAllowedOverMetered(true)
-                setAllowedOverRoaming(true)
-            }
-
-            downloadId = dm.enqueue(request)
-            Log.d(TAG, "DownloadManager enqueue: downloadId=$downloadId")
-
-            if (downloadId == -1L) {
-                Log.w(TAG, "DownloadManager 返回 -1，回退到 OkHttp")
-                useOkHttpFallback = true
-                startDirectHttpDownload(url)
-                promise.resolve(0.0)
-                return
-            }
-
-            registerDownloadReceiver()
-            promise.resolve(downloadId.toDouble())
-        } catch (e: Exception) {
-            Log.w(TAG, "DownloadManager 异常，回退到 OkHttp: ${e.message}")
-            try {
-                if (downloadId != -1L) {
-                    val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                    dm.remove(downloadId)
-                    Log.d(TAG, "已取消 DownloadManager 下载: $downloadId")
-                }
-            } catch (_: Exception) {}
-            try {
-                reactContext.unregisterReceiver(downloadCompleteReceiver)
-                downloadReceiverRegistered = false
-            } catch (_: Exception) {}
-            useOkHttpFallback = true
-            startDirectHttpDownload(url)
-            promise.resolve(0.0)
-        }
+        startDirectHttpDownload(url)
+        // 立即返回，由 JS 层轮询 getDownloadProgress 获取进度/网速
+        promise.resolve(0.0)
     }
 
     /**
-     * 使用 OkHttp 直接下载 APK
-     * 这是 DownloadManager 失败后的兜底方案
+     * 使用 OkHttp 流式下载 APK
+     * 每次写入实时累加字节数，下载完成后校验文件完整性
      */
     private fun startDirectHttpDownload(url: String) {
-        useOkHttpFallback = true
         val scope = CoroutineScope(Dispatchers.IO)
         scope.launch {
+            var response: okhttp3.Response? = null
             try {
-                val apkFile = File(
-                    reactContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                    APK_FILE_NAME
-                )
+                val apkFile = apkFile()
                 if (apkFile.exists()) apkFile.delete()
 
                 val request = Request.Builder()
                     .url(url)
                     .header("User-Agent", "MusicFree-Update/1.0")
+                    .header("Accept", "application/octet-stream, */*")
                     .build()
 
                 Log.d(TAG, "OkHttp 开始请求: $url")
-                val response = httpClient.newCall(request).execute()
-                if (!response.isSuccessful) {
-                    lastError = "下载失败: HTTP ${response.code}"
-                    Log.e(TAG, lastError)
-                    reactContext.runOnNativeModulesQueueThread {
-                        isDownloading = false
-                        emitEvent("error", lastError)
-                    }
-                    return@launch
+                response = httpClient.newCall(request).execute()
+                if (!response!!.isSuccessful) {
+                    throw IOException("下载失败: HTTP ${response!!.code}")
                 }
+                val body = response!!.body ?: throw IOException("下载失败: 空响应体")
 
-                val body = response.body
-                if (body == null) {
-                    lastError = "下载失败: 空响应体"
-                    reactContext.runOnNativeModulesQueueThread {
-                        isDownloading = false
-                        emitEvent("error", lastError)
-                    }
-                    return@launch
-                }
+                totalBytes = body.contentLength() // 可能为 -1（未知）
+                if (totalBytes < 0) totalBytes = 0
 
-                fallbackTotalBytes = body.contentLength()
-                Log.d(TAG, "OkHttp 下载开始, 预计: ${fallbackTotalBytes / 1024 / 1024}MB")
+                Log.d(TAG, "OkHttp 下载开始, 预计: ${if (totalBytes > 0) totalBytes / 1024 / 1024 else "未知"}MB")
 
                 body.byteStream().use { input ->
                     FileOutputStream(apkFile).use { output ->
-                        val buffer = ByteArray(8192)
-                        var downloaded = 0L
-                        lastProgressReportTime = System.currentTimeMillis()
-
+                        val buffer = ByteArray(64 * 1024)
+                        var written = 0L
                         while (true) {
                             val read = input.read(buffer)
                             if (read == -1) break
                             output.write(buffer, 0, read)
-                            downloaded += read
-                            fallbackDownloadedBytes = downloaded
-
-                            val now = System.currentTimeMillis()
-                            if (now - lastProgressReportTime >= 300) {
-                                lastProgressReportTime = now
-                                Log.d(TAG, "OkHttp: ${downloaded}/${fallbackTotalBytes}")
-                            }
+                            written += read
+                            downloadedBytes = written
                         }
                         output.flush()
                     }
                 }
+                response?.close()
+                response = null
 
-                response.close()
-                Log.d(TAG, "OkHttp 下载完成, 大小=${apkFile.length()}")
+                // 文件完整性校验：杜绝"进度 100 但实际未写完"
+                val len = apkFile.length()
+                if (len <= 0) throw IOException("下载文件为空")
+                if (totalBytes > 0 && len != totalBytes) {
+                    throw IOException("下载文件不完整 ($len/${totalBytes})")
+                }
 
+                Log.d(TAG, "OkHttp 下载完成并校验通过, 大小=${len}")
+
+                downloadFinishedVerified = true
                 reactContext.runOnNativeModulesQueueThread {
-                    isDownloading = false
-                    installApk()
+                    if (isDownloading) {
+                        isDownloading = false
+                        installApk()
+                    }
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "OkHttp 下载失败", e)
+                try { response?.close() } catch (_: Exception) {}
                 lastError = "下载失败: ${e.message}"
                 reactContext.runOnNativeModulesQueueThread {
-                    isDownloading = false
-                    emitEvent("error", lastError)
+                    if (isDownloading) {
+                        isDownloading = false
+                        emitEvent("error", lastError)
+                    }
                 }
             }
         }
     }
 
+    private fun apkFile(): File = File(
+        reactContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
+        APK_FILE_NAME
+    )
+
     /**
-     * 注册下载完成广播接收器
+     * 获取下载状态（进度 / 网速 / 累计字节）
+     * 返回对象: { progress: Int, speed: Long(字节/秒), downloadedBytes: Long, totalBytes: Long }
+     * progress 为 -1 表示下载失败
      */
-    private fun registerDownloadReceiver() {
-        if (!downloadReceiverRegistered) {
-            val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                reactContext.registerReceiver(
-                    downloadCompleteReceiver,
-                    filter,
-                    Context.RECEIVER_NOT_EXPORTED
-                )
-            } else {
-                @Suppress("DEPRECATION")
-                reactContext.registerReceiver(downloadCompleteReceiver, filter)
-            }
-            downloadReceiverRegistered = true
+    @ReactMethod
+    fun getDownloadProgress(promise: Promise) {
+        val result = Arguments.createMap()
+        val now = System.currentTimeMillis()
+
+        // 下载完成且校验通过
+        if (downloadFinishedVerified) {
+            result.putInt("progress", 100)
+            result.putLong("speed", currentSpeedBps)
+            result.putLong("downloadedBytes", downloadedBytes)
+            result.putLong("totalBytes", totalBytes)
+            promise.resolve(result)
+            return
         }
+
+        // 失败（未在下载）或无并发下载
+        if (!isDownloading) {
+            result.putInt("progress", -1)
+            result.putLong("speed", 0)
+            result.putLong("downloadedBytes", downloadedBytes)
+            result.putLong("totalBytes", totalBytes)
+            promise.resolve(result)
+            return
+        }
+
+        // 实时网速采样（两次轮询间字节差 / 时间差）
+        if (speedSampleTime > 0) {
+            val dt = now - speedSampleTime
+            if (dt > 0) {
+                val db = downloadedBytes - speedSampleBytes
+                currentSpeedBps = if (db >= 0) db * 1000 / dt else 0
+            }
+        }
+        speedSampleBytes = downloadedBytes
+        speedSampleTime = now
+
+        val progress = if (totalBytes > 0) {
+            min(downloadedBytes * 100 / totalBytes, 99L).toInt() // 未完成时最高 99
+        } else {
+            0
+        }
+
+        result.putInt("progress", progress.toInt())
+        result.putLong("speed", currentSpeedBps)
+        result.putLong("downloadedBytes", downloadedBytes)
+        result.putLong("totalBytes", totalBytes)
+        promise.resolve(result)
     }
 
     /**
@@ -456,17 +404,14 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
      */
     private fun installApk() {
         try {
-            val apkFile = File(
-                reactContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                APK_FILE_NAME
-            )
-            if (!apkFile.exists()) {
+            val file = apkFile()
+            if (!file.exists()) {
                 lastError = "APK 文件不存在"
                 emitEvent("error", lastError)
                 return
             }
 
-            Log.d(TAG, "准备覆盖安装 APK: ${apkFile.absolutePath}, 大小=${apkFile.length()}")
+            Log.d(TAG, "准备覆盖安装 APK: ${file.absolutePath}, 大小=${file.length()}")
 
             val packageManager = reactContext.packageManager
             val packageInstaller = packageManager.packageInstaller
@@ -480,9 +425,9 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
             val sessionId = packageInstaller.createSession(params)
             val session = packageInstaller.openSession(sessionId)
 
-            apkFile.inputStream().use { input ->
-                session.openWrite("MusicFree.apk", 0, apkFile.length()).use { output ->
-                    val buffer = ByteArray(8192)
+            file.inputStream().use { input ->
+                session.openWrite("MusicFree.apk", 0, file.length()).use { output ->
+                    val buffer = ByteArray(64 * 1024)
                     var read: Int
                     while (input.read(buffer).also { read = it } != -1) {
                         output.write(buffer, 0, read)
@@ -495,7 +440,6 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
 
             val intent = Intent(ACTION_INSTALL_RESULT).apply {
                 setPackage(reactContext.packageName)
-                putExtra(EXTRA_SESSION_ID, sessionId)
             }
             val pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT or
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -524,26 +468,23 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
      */
     private fun fallbackViewInstall() {
         try {
-            val apkFile = File(
-                reactContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
-                APK_FILE_NAME
-            )
-            if (!apkFile.exists()) {
+            val file = apkFile()
+            if (!file.exists()) {
                 emitEvent("error", "APK 文件不存在")
                 return
             }
 
-            Log.d(TAG, "使用 ACTION_VIEW 回退安装: ${apkFile.absolutePath}")
+            Log.d(TAG, "使用 ACTION_VIEW 回退安装: ${file.absolutePath}")
 
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 val uri = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
                     FileProvider.getUriForFile(
                         reactContext,
                         "${reactContext.packageName}.fileprovider",
-                        apkFile
+                        file
                     )
                 } else {
-                    Uri.fromFile(apkFile)
+                    Uri.fromFile(file)
                 }
                 setDataAndType(uri, "application/vnd.android.package-archive")
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -575,181 +516,6 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
             }
             installReceiverRegistered = true
         }
-    }
-
-    private fun getDownloadFailReason(reason: Int): String = when (reason) {
-        DownloadManager.ERROR_CANNOT_RESUME -> "无法恢复下载"
-        DownloadManager.ERROR_DEVICE_NOT_FOUND -> "存储设备不可用"
-        DownloadManager.ERROR_FILE_ALREADY_EXISTS -> "文件已存在"
-        DownloadManager.ERROR_FILE_ERROR -> "文件读写错误"
-        DownloadManager.ERROR_HTTP_DATA_ERROR -> "HTTP 数据错误"
-        DownloadManager.ERROR_INSUFFICIENT_SPACE -> "存储空间不足"
-        DownloadManager.ERROR_TOO_MANY_REDIRECTS -> "重定向过多"
-        DownloadManager.ERROR_UNHANDLED_HTTP_CODE -> "HTTP 状态码异常"
-        DownloadManager.ERROR_UNKNOWN -> "未知下载错误"
-        else -> "下载失败 (code=$reason)"
-    }
-
-    /**
-     * 获取下载进度（0-100）
-     * 根据下载模式返回对应进度
-     */
-    @ReactMethod
-    fun getDownloadProgress(promise: Promise) {
-        try {
-            if (!isDownloading) {
-                promise.resolve(if (useOkHttpFallback) 100 else -1)
-                return
-            }
-
-            // OkHttp 回退模式：使用 fallback 变量计算进度
-            if (useOkHttpFallback) {
-                val progress = if (fallbackTotalBytes > 0) {
-                    (fallbackDownloadedBytes * 100 / fallbackTotalBytes).toInt()
-                } else {
-                    (fallbackDownloadedBytes / 1024 / 1024).toInt().coerceAtMost(50)
-                }
-                promise.resolve(progress.coerceIn(0, 100))
-                return
-            }
-
-            // DownloadManager 模式
-            if (downloadId == -1L) {
-                promise.resolve(-1)
-                return
-            }
-
-            // 全局超时检测：DownloadManager 下载超过 60 秒，强制切换 OkHttp
-            val elapsed = System.currentTimeMillis() - downloadStartTime
-            if (elapsed > DOWNLOAD_MAX_TIME_MS) {
-                Log.w(TAG, "DownloadManager 总超时 (${elapsed}ms)，强制切换 OkHttp")
-                val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-                try {
-                    dm.remove(downloadId)
-                } catch (_: Exception) {}
-                try {
-                    reactContext.unregisterReceiver(downloadCompleteReceiver)
-                    downloadReceiverRegistered = false
-                } catch (_: Exception) {}
-                useOkHttpFallback = true
-                val url = getDownloadUrl()
-                if (url != null) {
-                    startDirectHttpDownload(url)
-                    promise.resolve(0)
-                    return
-                }
-                promise.resolve(-1)
-                return
-            }
-
-            val dm = reactContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
-            val query = DownloadManager.Query().setFilterById(downloadId)
-            val cursor: Cursor = dm.query(query) ?: run {
-                promise.resolve(-1)
-                return
-            }
-            cursor.use {
-                if (it.moveToFirst()) {
-                    val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                    val downloaded = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
-                    val total = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
-                    Log.d(TAG, "DM status=$status, downloaded=$downloaded, total=$total")
-
-                    when (status) {
-                        DownloadManager.STATUS_RUNNING -> {
-                            if (downloaded == 0L) {
-                                noProgressCount++
-                                if (noProgressCount >= 20) {
-                                    Log.w(TAG, "DownloadManager 卡住（进度0持续10秒），回退到 OkHttp")
-                                    noProgressCount = 0
-                                    switchToOkHttp(dm)
-                                    promise.resolve(0)
-                                    return
-                                }
-                            } else {
-                                noProgressCount = 0
-                                dmTotalTimeoutCount = 0
-                            }
-
-                            if (total > 0) {
-                                promise.resolve((downloaded * 100 / total).toInt())
-                            } else {
-                                promise.resolve(50)
-                            }
-                        }
-                        DownloadManager.STATUS_PAUSED -> {
-                            val reason = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
-                            Log.w(TAG, "DownloadManager 暂停, reason=$reason")
-                            noProgressCount++
-                            if (noProgressCount >= 10) {
-                                Log.w(TAG, "DownloadManager 暂停超过5秒，回退到 OkHttp")
-                                noProgressCount = 0
-                                switchToOkHttp(dm)
-                                promise.resolve(0)
-                                return
-                            }
-                            promise.resolve(0)
-                        }
-                        DownloadManager.STATUS_FAILED -> {
-                            val reason = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
-                            lastError = getDownloadFailReason(reason)
-                            Log.e(TAG, "DownloadManager 失败: $lastError")
-                            promise.resolve(-1)
-                        }
-                        DownloadManager.STATUS_SUCCESSFUL -> {
-                            promise.resolve(100)
-                        }
-                        else -> {
-                            // 包括 STATUS_PENDING(1) 等未知状态
-                            // 这些状态下 DownloadManager 可能永远不会开始下载
-                            dmTotalTimeoutCount++
-                            Log.w(TAG, "DownloadManager 异常状态: $status, count=$dmTotalTimeoutCount")
-                            if (dmTotalTimeoutCount >= 30) {
-                                Log.w(TAG, "DownloadManager 异常状态持续15秒，回退到 OkHttp")
-                                dmTotalTimeoutCount = 0
-                                switchToOkHttp(dm)
-                                promise.resolve(0)
-                                return
-                            }
-                            promise.resolve(0)
-                        }
-                    }
-                } else {
-                    promise.resolve(-1)
-                }
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "getDownloadProgress 异常", e)
-            promise.resolve(-1)
-        }
-    }
-
-    /**
-     * 从 DownloadManager 切换到 OkHttp 下载
-     */
-    private fun switchToOkHttp(dm: DownloadManager) {
-        try {
-            dm.remove(downloadId)
-            Log.d(TAG, "已取消 DownloadManager 下载: $downloadId")
-        } catch (_: Exception) {}
-        try {
-            reactContext.unregisterReceiver(downloadCompleteReceiver)
-            downloadReceiverRegistered = false
-        } catch (_: Exception) {}
-        useOkHttpFallback = true
-        val url = getDownloadUrl()
-        if (url != null) {
-            startDirectHttpDownload(url)
-        }
-    }
-
-    /**
-     * 获取当前下载的 URL（用于回退时重新下载）
-     */
-    private var currentDownloadUrl: String = ""
-
-    private fun getDownloadUrl(): String? {
-        return if (currentDownloadUrl.isNotBlank()) currentDownloadUrl else null
     }
 
     @ReactMethod

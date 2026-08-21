@@ -2,8 +2,7 @@ import { useI18N } from "@/core/i18n";
 import { ROUTE_PATH, useNavigate } from "@/core/router";
 import rpx from "@/utils/rpx";
 import React from "react";
-import { StyleSheet } from "react-native";
-import { ScrollView } from "react-native-gesture-handler";
+import { ScrollView, StyleSheet } from "react-native";
 import ActionButton from "../ActionButton";
 
 export default function Operations() {

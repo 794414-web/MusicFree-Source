@@ -1,17 +1,17 @@
 {
-  "version": "1.2.18",
+  "version": "1.2.19",
   "changeLog": [
-    "## v1.2.18 内置 GD音乐台音源",
+    "## v1.2.19 修复更新下载、导入歌单、输入法优化",
     "",
-    "- 新增：内置 GD音乐台(music.gdstudio.xyz) 聚合音源，直接对接 music-api.gdstudio.xyz 接口，无需再安装第三方插件",
-    "- 新增：一次搜索聚合 网易云 / JOOX / B站 等稳定源结果",
-    "- 新增：支持多音质播放（标准320 / 无损740），播放失败自动降级",
-    "- 新增：支持歌词（含翻译）与封面图获取",
-    "- 注意：该接口有访问频率限制（5分钟内50次），请勿频繁搜索"
+    "- 修复：下载进度显示100%但实际未下载完成的问题（改为字节流精确统计，下载完成后校验文件完整性）",
+    "- 新增：下载时实时显示网速（如 3.2 MB/s）",
+    "- 优化：下载改用更稳定的直连方式，避免系统下载器在国内手机上的卡死问题",
+    "- 优化：优先使用国内下载地址（Gitee），GitHub 作为备用托底",
+    "- 新增：内置 GD音乐台 歌单导入，支持粘贴网易云歌单链接/ID（导入到本应用歌单）",
+    "- 修复：导入歌单等输入框输入法反复弹出、无法输入的问题（移除自动重新聚焦的循环逻辑，根因已由方向判断修复）"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.18/MusicFree-1.2.18-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.18/MusicFree-1.2.18-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.18/release/MusicFree-1.2.18-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.19/MusicFree-1.2.19-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.19/MusicFree-1.2.19-universal.apk"
   ]
 }
