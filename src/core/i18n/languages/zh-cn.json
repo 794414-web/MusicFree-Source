@@ -403,6 +403,8 @@
     "panel.importMusicSheet.prepareImport": "准备导入",
     "panel.importMusicSheet.foundSongs": "发现{count}首歌曲! 现在开始导入吗?",
     "panel.importMusicSheet.invalidLink": "链接有误或目标歌单为空",
+    "panel.importMusicSheet.unifiedHint": "粘贴任意平台歌单链接，自动识别来源导入（支持：网易云 / QQ音乐 / 酷狗 / 酷我 / 咪咕 / 汽水）",
+    "panel.importMusicSheet.entryDescription": "自动识别来源：网易云 / QQ / 酷狗 / 酷我 / 咪咕 / 汽水",
     "panel.musicItemLyricOptions.author": "作者: {artist}",
     "panel.musicItemLyricOptions.album": "专辑: {album}",
     "panel.musicItemLyricOptions.toggleDesktopLyric": "{status}桌面歌词",

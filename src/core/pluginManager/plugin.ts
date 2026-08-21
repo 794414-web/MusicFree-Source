@@ -33,8 +33,10 @@ import _internalPluginMeta from "./meta";
 import { IPluginManager } from "@/types/core/pluginManager";
 
 // 创建插件专用的 axios 实例，避免污染全局
+// 默认 8000ms：部分音源接口（QQ 歌词/歌单、GD 聚合）响应较慢，
+// 2000ms 过短会导致歌词/导入请求被过早中断
 const pluginAxios = axios.create({
-    timeout: 2000,
+    timeout: 8000,
 });
 
 pluginAxios.interceptors.response.use((response) => {

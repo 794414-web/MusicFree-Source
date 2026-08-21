@@ -483,6 +483,8 @@ export interface ILanguageData {
     "panel.importMusicSheet.prepareImport": string; // 准备导入
     "panel.importMusicSheet.foundSongs": string; // 发现歌曲
     "panel.importMusicSheet.invalidLink": string; // 链接有误或目标歌单为空
+    "panel.importMusicSheet.unifiedHint": string; // 统一导入提示
+    "panel.importMusicSheet.entryDescription": string; // 统一导入入口说明
 
     // 面板相关 - 音乐项歌词选项
     "panel.musicItemLyricOptions.author": string; // 作者

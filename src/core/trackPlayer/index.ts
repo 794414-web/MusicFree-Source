@@ -170,9 +170,13 @@ class TrackPlayer extends EventEmitter<{
                 track.isInit = true;
             }
 
-            // 异步获取播放源（音源插件可能已失效/卸载，需整体容错，避免启动闪退）
+            // 异步获取播放源（播放统一由 GD 音乐台负责：仅 GD 平台歌曲在此预取地址，
+            // 其余平台歌曲不调用导入歌单的源，播放时统一走 GD）
             const restorePlugin = this.pluginManagerService.getByMedia(track);
-            if (restorePlugin?.methods?.getMediaSource) {
+            if (
+                track.platform === "GD音乐台" &&
+                restorePlugin?.methods?.getMediaSource
+            ) {
                 restorePlugin.methods
                     .getMediaSource(track, quality)
                     .then(async newSource => {
@@ -506,21 +510,43 @@ class TrackPlayer extends EventEmitter<{
             );
             // 5.3 插件返回音源
             let source: IPlugin.IMediaSourceResult | null = null;
-            for (let quality of qualityOrder) {
-                if (this.isCurrentMusic(musicItem)) {
-                    source =
-                        (await plugin?.methods?.getMediaSource(
-                            musicItem,
-                            quality,
-                        )) ?? null;
-                    // 5.3.1 获取到真实源
-                    if (source) {
-                        this.setQuality(quality);
-                        break;
+            let playItem: IMusic.IMusicItem = musicItem;
+
+            // 5.2.1 播放统一走 GD 音乐台：其他平台插件仅用于导入歌单，
+            // 播放时先在 GD 聚合源中搜索同名歌曲获取地址，绝不回退到导入歌单的源来播放
+            const gdResult = await this.tryGetGDMediaSource(
+                musicItem,
+                qualityOrder,
+            );
+            if (gdResult) {
+                source = gdResult.source;
+                playItem = gdResult.musicItem;
+                this.setQuality(gdResult.quality);
+            }
+
+            // 5.3 仅 GD 平台歌曲直接走 GD 插件取地址；其余平台的歌曲一律不调用其插件播放，
+            // 彻底避免使用「导入歌单的源」来播放歌曲，减少播放问题
+            if (
+                !source &&
+                musicItem.platform === "GD音乐台" &&
+                plugin?.methods?.getMediaSource
+            ) {
+                for (let quality of qualityOrder) {
+                    if (this.isCurrentMusic(musicItem)) {
+                        source =
+                            (await plugin?.methods?.getMediaSource(
+                                musicItem,
+                                quality,
+                            )) ?? null;
+                        // 5.3.1 获取到真实源
+                        if (source) {
+                            this.setQuality(quality);
+                            break;
+                        }
+                    } else {
+                        // 5.3.2 已经切换到其他歌曲了，
+                        return;
                     }
-                } else {
-                    // 5.3.2 已经切换到其他歌曲了，
-                    return;
                 }
             }
 
@@ -665,10 +691,24 @@ class TrackPlayer extends EventEmitter<{
         try {
             const progress = await ReactNativeTrackPlayer.getProgress();
             const plugin = this.pluginManagerService.getByMedia(musicItem);
-            const newSource = await plugin?.methods?.getMediaSource(
-                musicItem,
-                newQuality,
-            );
+            let newSource: IPlugin.IMediaSourceResult | null = null;
+            // 播放统一走 GD：非 GD 平台歌曲切音质时也通过 GD 聚合源获取地址，
+            // 不使用「导入歌单的源」来播放
+            if (
+                musicItem.platform !== "GD音乐台" &&
+                !getLocalPath(musicItem)
+            ) {
+                newSource = await this.getGDMediaSourceForItem(
+                    musicItem,
+                    newQuality,
+                );
+            } else {
+                newSource =
+                    (await plugin?.methods?.getMediaSource(
+                        musicItem,
+                        newQuality,
+                    )) ?? null;
+            }
             if (!newSource?.url) {
                 throw new Error(PlayFailReason.INVALID_SOURCE);
             }
@@ -898,6 +938,13 @@ class TrackPlayer extends EventEmitter<{
      */
     private lastSourceSwitchAt = 0;
 
+    // GD 搜索缓存：避免同一首歌短时间内重复搜索触发 GD 接口频率限制（5分钟50次）
+    private gdSearchCache = new Map<
+        string,
+        { time: number; data: IMusic.IMusicItem[] }
+    >();
+    private gdSearchCacheTTL = 10 * 60 * 1000;
+
     private async handlePlayFail() {
         // 整体容错：任何一步出错（换源/跳转）都不能变成未处理的 Promise rejection 导致闪退
         try {
@@ -1015,6 +1062,149 @@ class TrackPlayer extends EventEmitter<{
     }
 
     /**
+     * 优先使用 GD 音乐台统一获取播放地址
+     * 其他平台插件仅用于导入歌单，播放时先在 GD 聚合源中搜索同名歌曲并获取地址；
+     * GD 不可用 / 无匹配结果 / 无法获取地址时返回 null，由调用方回退到歌曲原平台插件。
+     */
+    private async tryGetGDMediaSource(
+        musicItem: IMusic.IMusicItem,
+        qualityOrder: IMusic.IQualityKey[],
+    ): Promise<{
+        source: IPlugin.IMediaSourceResult;
+        musicItem: IMusic.IMusicItem;
+        quality: IMusic.IQualityKey;
+    } | null> {
+        try {
+            const gdPlugin = this.pluginManagerService.getByName("GD音乐台");
+            if (
+                !gdPlugin?.methods?.search ||
+                !gdPlugin?.methods?.getMediaSource ||
+                musicItem.platform === "GD音乐台" ||
+                getLocalPath(musicItem)
+            ) {
+                return null;
+            }
+
+            const keyword = `${musicItem.title} ${musicItem.artist ?? ""}`.trim();
+            if (!keyword) {
+                return null;
+            }
+
+            // 1. 命中缓存直接使用，避免重复搜索消耗接口频率额度
+            let list: IMusic.IMusicItem[] | null = null;
+            const cached = this.gdSearchCache.get(keyword);
+            if (cached && Date.now() - cached.time < this.gdSearchCacheTTL) {
+                list = cached.data;
+            } else {
+                const result = await gdPlugin.methods.search(keyword, 1, "music");
+                list = (result?.data as IMusic.IMusicItem[] | undefined) ?? [];
+                this.gdSearchCache.set(keyword, { time: Date.now(), data: list });
+                // 防止缓存无限增长
+                if (this.gdSearchCache.size > 200) {
+                    const firstKey = this.gdSearchCache.keys().next().value;
+                    if (firstKey) {
+                        this.gdSearchCache.delete(firstKey);
+                    }
+                }
+            }
+            if (!list || list.length === 0) {
+                return null;
+            }
+
+            // 2. 优先取标题+歌手完全一致的项，否则取第一个结果
+            const gdItem =
+                list.find(
+                    it =>
+                        it.title === musicItem.title &&
+                        it.artist === musicItem.artist,
+                ) ?? list[0];
+
+            // 3. 依次尝试各音质获取播放地址
+            for (const quality of qualityOrder) {
+                if (!this.isCurrentMusic(musicItem)) {
+                    return null;
+                }
+                try {
+                    const source =
+                        (await gdPlugin.methods.getMediaSource(
+                            gdItem,
+                            quality,
+                        )) ?? null;
+                    if (source?.url) {
+                        return {
+                            source,
+                            musicItem: gdItem as IMusic.IMusicItem,
+                            quality,
+                        };
+                    }
+                } catch {
+                    // 该音质获取失败，继续尝试下一档
+                }
+            }
+            return null;
+        } catch (e: any) {
+            trace("GD 统一播放失败，回退原音源", e?.message);
+            return null;
+        }
+    }
+
+    /**
+     * 按指定音质从 GD 聚合源获取播放地址（复用搜索缓存）。
+     * 仅供非 GD 平台歌曲在切音质等场景使用，保证播放始终走 GD。
+     */
+    private async getGDMediaSourceForItem(
+        musicItem: IMusic.IMusicItem,
+        quality: IMusic.IQualityKey,
+    ): Promise<IPlugin.IMediaSourceResult | null> {
+        try {
+            const gdPlugin = this.pluginManagerService.getByName("GD音乐台");
+            if (
+                !gdPlugin?.methods?.search ||
+                !gdPlugin?.methods?.getMediaSource
+            ) {
+                return null;
+            }
+            const keyword = `${musicItem.title} ${musicItem.artist ?? ""}`.trim();
+            if (!keyword) {
+                return null;
+            }
+
+            let list: IMusic.IMusicItem[] | null = null;
+            const cached = this.gdSearchCache.get(keyword);
+            if (cached && Date.now() - cached.time < this.gdSearchCacheTTL) {
+                list = cached.data;
+            } else {
+                const result = await gdPlugin.methods.search(keyword, 1, "music");
+                list = (result?.data as IMusic.IMusicItem[] | undefined) ?? [];
+                this.gdSearchCache.set(keyword, { time: Date.now(), data: list });
+            }
+            if (!list || list.length === 0) {
+                return null;
+            }
+
+            const gdItem =
+                list.find(
+                    it =>
+                        it.title === musicItem.title &&
+                        it.artist === musicItem.artist,
+                ) ?? list[0];
+
+            try {
+                const source =
+                    (await gdPlugin.methods.getMediaSource(
+                        gdItem,
+                        quality,
+                    )) ?? null;
+                return source?.url ? source : null;
+            } catch {
+                return null;
+            }
+        } catch {
+            return null;
+        }
+    }
+
+    /**
  *
  * @param musicItem 音乐类型
  * @param type 媒体类型
@@ -1027,7 +1217,11 @@ class TrackPlayer extends EventEmitter<{
         abortFunction?: () => boolean,
     ): Promise<ICommon.SupportMediaItemBase[T] | null> {
         const keyword = musicItem.alias || musicItem.title;
-        const plugins = this.pluginManagerService.getSearchablePlugins(type);
+        // 播放统一由 GD 音乐台负责：换源时也只搜索 GD 聚合源，
+        // 其他平台插件仅用于导入歌单，绝不参与播放，避免播放问题
+        const plugins = this.pluginManagerService
+            .getSearchablePlugins(type)
+            .filter(p => p.name === "GD音乐台");
 
         let distance = Infinity;
         let minDistanceMusicItem;

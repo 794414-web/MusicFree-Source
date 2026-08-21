@@ -403,6 +403,8 @@
     "panel.importMusicSheet.prepareImport": "Prepare to Import",
     "panel.importMusicSheet.foundSongs": "Found {count} songs! Start importing now?",
     "panel.importMusicSheet.invalidLink": "Invalid link or target playlist is empty",
+    "panel.importMusicSheet.unifiedHint": "Paste any platform playlist link. The source will be auto-detected (NetEase / QQ Music / Kugou / Kuwo / Migu / Qishui)",
+    "panel.importMusicSheet.entryDescription": "Auto-detect source: NetEase / QQ / Kugou / Kuwo / Migu / Qishui",
     "panel.musicItemLyricOptions.author": "Artist: {artist}",
     "panel.musicItemLyricOptions.album": "Album: {album}",
     "panel.musicItemLyricOptions.toggleDesktopLyric": "{status} Desktop Lyrics",

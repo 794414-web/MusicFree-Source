@@ -245,28 +245,37 @@ module.exports = {
         return nextCandidate();
     },
 
-    // 获取歌词（含翻译）：优先使用上次成功播放的源
+    // 获取歌词（含翻译）：依次尝试候选源（记忆源 -> 默认源 -> 其他稳定源），
+    // 单个源歌词缺失/失败时降级到下一个源，提高歌词命中率
     getLyric: function (musicItem) {
         var srcInfo = buildSourceCandidates(musicItem);
-        var source = srcInfo.candidates[0];
         var id = musicItem._gdLyricId || musicItem._gdId || musicItem.id;
-        return requestGD({
-            types: "lyric",
-            source: source,
-            id: id,
-        })
-            .then(function (data) {
-                if (!data || !data.lyric) {
-                    return null;
-                }
-                return {
-                    rawLrc: data.lyric,
-                    translation: data.tlyric || undefined,
-                };
+        var candidateIdx = 0;
+        function nextCandidate() {
+            if (candidateIdx >= srcInfo.candidates.length) {
+                return Promise.resolve(null);
+            }
+            var source = srcInfo.candidates[candidateIdx];
+            candidateIdx += 1;
+            return requestGD({
+                types: "lyric",
+                source: source,
+                id: id,
             })
-            .catch(function () {
-                return null;
-            });
+                .then(function (data) {
+                    if (data && data.lyric) {
+                        return {
+                            rawLrc: data.lyric,
+                            translation: data.tlyric || undefined,
+                        };
+                    }
+                    return nextCandidate();
+                })
+                .catch(function () {
+                    return nextCandidate();
+                });
+        }
+        return nextCandidate();
     },
 
     // 播放成功后补充封面图（列表封面不逐个请求，避免快速消耗接口频率额度）

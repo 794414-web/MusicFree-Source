@@ -403,6 +403,8 @@
     "panel.importMusicSheet.prepareImport": "準備導入",
     "panel.importMusicSheet.foundSongs": "發現{count}首歌曲! 現在開始導入嗎?",
     "panel.importMusicSheet.invalidLink": "連結有誤或目標歌單為空",
+    "panel.importMusicSheet.unifiedHint": "貼上任意平台歌單連結，自動識別來源匯入（支援：網易雲 / QQ音樂 / 酷狗 / 酷我 / 咪咕 / 汽水）",
+    "panel.importMusicSheet.entryDescription": "自動識別來源：網易雲 / QQ / 酷狗 / 酷我 / 咪咕 / 汽水",
     "panel.musicItemLyricOptions.author": "作者: {artist}",
     "panel.musicItemLyricOptions.album": "專輯: {album}",
     "panel.musicItemLyricOptions.toggleDesktopLyric": "{status}桌面歌詞",

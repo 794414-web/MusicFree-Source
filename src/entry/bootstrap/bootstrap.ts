@@ -24,7 +24,7 @@ import Toast from "@/utils/toast";
 import * as SplashScreen from "expo-splash-screen";
 import {  Linking, Platform } from "react-native";
 import { PERMISSIONS, check, request } from "react-native-permissions";
-import RNFS, { readDir, unlink } from "react-native-fs";
+import RNFS, { unlink } from "react-native-fs";
 import RNTrackPlayer, { AppKilledPlaybackBehavior, Capability } from "react-native-track-player";
 import i18n from "@/core/i18n";
 import bootstrapAtom from "./bootstrap.atom";
@@ -37,16 +37,21 @@ import getOrCreateMMKV from "@/utils/getOrCreateMMKV";
  * 这些 js 文件位于 android/app/src/main/assets/plugins/
  * 首次启动或版本升级时自动复制到插件目录
  */
-const BUILTIN_PLUGINS_VERSION = "7";
+const BUILTIN_PLUGINS_VERSION = "9";
 const BUILTIN_PLUGIN_FILES: string[] = [
     "gdstudio.js",
     "qishui.js",
-    "sixyin.js",
     "xiaogou.js",
     "xiaomi.js",
     "xiaoqiu.js",
     "xiaowo.js",
     "xiaoyun.js",
+];
+
+// 历史上曾作为内置音源的文件名（用于清理旧版本遗留的重复/废弃插件，如 sixyin.js）
+const BUILTIN_PLUGIN_ALL_FILES: string[] = [
+    ...BUILTIN_PLUGIN_FILES,
+    "sixyin.js",
 ];
 
 
@@ -453,15 +458,17 @@ function bindEvents() {
  * 仅在内置音源版本更新时执行，避免重复复制
  */
 async function setupBuiltinPlugins() {
-    const installedVersion = Config.getConfig("basic.builtinPluginsVersion");
-    if (installedVersion === BUILTIN_PLUGINS_VERSION) {
-        return;
-    }
-
     await checkAndCreateDir(pathConst.pluginPath);
+
+    const installedVersion = Config.getConfig("basic.builtinPluginsVersion");
+    const needReinstall = installedVersion !== BUILTIN_PLUGINS_VERSION;
 
     for (const fileName of BUILTIN_PLUGIN_FILES) {
         const destPath = `${pathConst.pluginPath}${fileName}`;
+        // 版本一致时仅补齐缺失文件（防止插件目录文件被误删后功能不可用）
+        if (!needReinstall && (await RNFS.exists(destPath))) {
+            continue;
+        }
         const assetPath = `plugins/${fileName}`;
         try {
             const assetExists = await RNFS.existsAssets(assetPath);
@@ -478,11 +485,37 @@ async function setupBuiltinPlugins() {
 
     Config.setConfig("basic.builtinPluginsVersion", BUILTIN_PLUGINS_VERSION);
     console.log("内置音源安装完成");
+
+    // 清理旧版本遗留的废弃/重复平台插件（如 sixyin.js）
+    for (const fileName of BUILTIN_PLUGIN_ALL_FILES) {
+        if (BUILTIN_PLUGIN_FILES.includes(fileName)) {
+            continue;
+        }
+        const stalePath = `${pathConst.pluginPath}${fileName}`;
+        try {
+            if (await RNFS.exists(stalePath)) {
+                await unlink(stalePath);
+                console.log(`已清理废弃内置音源: ${fileName}`);
+            }
+            // 同步清除插件缓存，避免残留元数据
+            try {
+                const pluginCacheStore = getOrCreateMMKV("plugin.cache");
+                if (pluginCacheStore.contains(stalePath)) {
+                    pluginCacheStore.delete(stalePath);
+                }
+            } catch {}
+        } catch (e) {
+            console.error(`清理废弃内置音源失败 ${fileName}:`, e);
+        }
+    }
 }
 
 /**
- * 设置默认插件订阅（车载版专用）
- * 首次启动时自动添加订阅源并安装插件
+ * 设置默认插件订阅
+ * 首次启动时写入默认订阅地址。
+ * 注意：这里只写配置，不删除/不自动安装插件。
+ * 内置音源（GD音乐台 + 各平台导入插件）由 setupBuiltinPlugins 统一管理，
+ * 删除插件文件会导致歌词、歌单导入等功能不可用。
  */
 async function setupDefaultPluginSubscribe() {
     try {
@@ -504,51 +537,6 @@ async function setupDefaultPluginSubscribe() {
             ]);
             Config.setConfig("plugin.subscribeUrl", defaultSubscribe);
             console.log("已设置默认插件订阅：MusicFree 音源库");
-            
-            // 清除旧插件缓存（内置音源已移除）
-            try {
-                const pluginCacheStore = getOrCreateMMKV("plugin.cache");
-                const cachedKeys = pluginCacheStore.getAllKeys();
-                cachedKeys.forEach(key => {
-                    pluginCacheStore.delete(key);
-                });
-                console.log("已清除旧插件缓存");
-            } catch {}
-            
-            // 清除旧插件文件
-            try {
-                const pluginFiles = await readDir(pathConst.pluginPath);
-                const builtinFilePatterns = [
-                    "xiaoqiu", "xiaowo", "xiaoyun", "xiaogou",
-                    "xiaomi", "sixyin", "qishui"
-                ];
-                for (const file of pluginFiles) {
-                    const name = file.name ?? file.path ?? "";
-                    if (builtinFilePatterns.some(p => name.startsWith(p))) {
-                        try {
-                            await unlink(file.path);
-                        } catch {}
-                    }
-                }
-                console.log("已清除旧内置音源文件");
-            } catch {}
-
-            // 延迟一下，等订阅设置完成后再安装插件
-            setTimeout(async () => {
-                try {
-                    console.log("开始自动安装订阅插件...");
-                    // 从订阅 URL 安装插件
-                    const urlItems = JSON.parse(defaultSubscribe);
-                    if (Array.isArray(urlItems)) {
-                        for (let i = 0; i < urlItems.length; ++i) {
-                            await PluginManager.installPluginFromUrl(urlItems[i].url);
-                        }
-                        console.log("自动安装订阅插件完成");
-                    }
-                } catch (e) {
-                    console.error("自动安装订阅插件失败:", e);
-                }
-            }, 3000);
         }
     } catch (e) {
         console.error("设置默认插件订阅失败:", e);

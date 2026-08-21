@@ -1,17 +1,17 @@
 {
-  "version": "1.2.19",
+  "version": "2.0.0",
   "changeLog": [
-    "## v1.2.19 修复更新下载、导入歌单、输入法优化",
+    "## v2.0.0 修复QQ歌单导入、歌词显示、内置音源管理",
     "",
-    "- 修复：下载进度显示100%但实际未下载完成的问题（改为字节流精确统计，下载完成后校验文件完整性）",
-    "- 新增：下载时实时显示网速（如 3.2 MB/s）",
-    "- 优化：下载改用更稳定的直连方式，避免系统下载器在国内手机上的卡死问题",
-    "- 优化：优先使用国内下载地址（Gitee），GitHub 作为备用托底",
-    "- 新增：内置 GD音乐台 歌单导入，支持粘贴网易云歌单链接/ID（导入到本应用歌单）",
-    "- 修复：导入歌单等输入框输入法反复弹出、无法输入的问题（移除自动重新聚焦的循环逻辑，根因已由方向判断修复）"
+    "- 修复：内置平台插件（小秋QQ/小芸网易云/小枸酷狗/小蜜咪咕/小蜗酷我/奇水汽水）被误删，导致歌词全部无法显示、QQ歌单无法导入的问题",
+    "- 新增：统一歌单导入，粘贴任意歌单链接自动识别来源（GD优先，各平台插件兜底）",
+    "- 新增：QQ音乐歌单链接自动识别导入（ryqq_v2 等新版分享链接）",
+    "- 修复：GD音乐台歌词获取改为多音源逐个尝试，提升歌词命中率",
+    "- 优化：插件请求超时由2秒延长到8秒，避免网络波动导致歌词/导入失败",
+    "- 优化：内置音源启动时自动补齐缺失文件，防止功能失效"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.19/MusicFree-1.2.19-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.19/MusicFree-1.2.19-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.0.0/MusicFree-2.0.0-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.0/MusicFree-2.0.0-universal.apk"
   ]
 }
