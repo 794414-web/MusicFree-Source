@@ -37,8 +37,17 @@ import getOrCreateMMKV from "@/utils/getOrCreateMMKV";
  * 这些 js 文件位于 android/app/src/main/assets/plugins/
  * 首次启动或版本升级时自动复制到插件目录
  */
-const BUILTIN_PLUGINS_VERSION = "3";
-const BUILTIN_PLUGIN_FILES: string[] = [];
+const BUILTIN_PLUGINS_VERSION = "6";
+const BUILTIN_PLUGIN_FILES: string[] = [
+    "gdstudio.js",
+    "qishui.js",
+    "sixyin.js",
+    "xiaogou.js",
+    "xiaomi.js",
+    "xiaoqiu.js",
+    "xiaowo.js",
+    "xiaoyun.js",
+];
 
 
 // 依赖管理

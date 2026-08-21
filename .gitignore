@@ -90,8 +90,9 @@ web-build/
 # 教程文件夹（不上传）
 教程/
 
-# APK files (uploaded as GitHub Releases instead)
+# APK files (release 目录下的发布 APK 随仓库提交，其余 APK 不上传)
 *.apk
+!release/*.apk
 
 # 测试调试文件
 ui*.xml

@@ -1,17 +1,17 @@
 {
-  "version": "1.2.17",
+  "version": "1.2.18",
   "changeLog": [
-    "## v1.2.17 手机端启动闪退深度修复 + 输入法稳定性",
+    "## v1.2.18 内置 GD音乐台音源",
     "",
-    "- 修复：启动阶段配置读取容错，单个配置值损坏不再导致闪退",
-    "- 修复：歌单数据缺失/畸形（其他源残留）导致启动闪退，自动兜底并过滤非法数据",
-    "- 修复：历史播放记录畸形数据（其他源残留）导致启动闪退，自动过滤",
-    "- 修复：导入歌单页面输入法自动关闭问题（方向误判导致面板重排，重新唤起输入焦点）",
-    "- 优化：v1.2.16 基础上继续加固播放队列、配置、歌单、历史数据的启动容错"
+    "- 新增：内置 GD音乐台(music.gdstudio.xyz) 聚合音源，直接对接 music-api.gdstudio.xyz 接口，无需再安装第三方插件",
+    "- 新增：一次搜索聚合 网易云 / JOOX / B站 等稳定源结果",
+    "- 新增：支持多音质播放（标准320 / 无损740），播放失败自动降级",
+    "- 新增：支持歌词（含翻译）与封面图获取",
+    "- 注意：该接口有访问频率限制（5分钟内50次），请勿频繁搜索"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.17/MusicFree-1.2.17-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.17/MusicFree-1.2.17-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.17/release/MusicFree-1.2.17-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v1.2.18/MusicFree-1.2.18-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v1.2.18/MusicFree-1.2.18-universal.apk",
+    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@v1.2.18/release/MusicFree-1.2.18-universal.apk"
   ]
 }
