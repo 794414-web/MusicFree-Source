@@ -358,9 +358,10 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
         // 下载完成且校验通过
         if (downloadFinishedVerified) {
             result.putInt("progress", 100)
-            result.putLong("speed", currentSpeedBps)
-            result.putLong("downloadedBytes", downloadedBytes)
-            result.putLong("totalBytes", totalBytes)
+            // putLong 在部分 RN 构建下会触发 UnsatisfiedLinkError，改用 putDouble（ReactMethod 参数不受影响，精度足够）
+            result.putDouble("speed", currentSpeedBps.toDouble())
+            result.putDouble("downloadedBytes", downloadedBytes.toDouble())
+            result.putDouble("totalBytes", totalBytes.toDouble())
             promise.resolve(result)
             return
         }
@@ -368,9 +369,9 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
         // 失败（未在下载）或无并发下载
         if (!isDownloading) {
             result.putInt("progress", -1)
-            result.putLong("speed", 0)
-            result.putLong("downloadedBytes", downloadedBytes)
-            result.putLong("totalBytes", totalBytes)
+            result.putDouble("speed", 0.0)
+            result.putDouble("downloadedBytes", downloadedBytes.toDouble())
+            result.putDouble("totalBytes", totalBytes.toDouble())
             promise.resolve(result)
             return
         }
@@ -393,9 +394,9 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
         }
 
         result.putInt("progress", progress.toInt())
-        result.putLong("speed", currentSpeedBps)
-        result.putLong("downloadedBytes", downloadedBytes)
-        result.putLong("totalBytes", totalBytes)
+        result.putDouble("speed", currentSpeedBps.toDouble())
+        result.putDouble("downloadedBytes", downloadedBytes.toDouble())
+        result.putDouble("totalBytes", totalBytes.toDouble())
         promise.resolve(result)
     }
 

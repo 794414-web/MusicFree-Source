@@ -1,13 +1,13 @@
 {
-  "version": "2.0.1",
+  "version": "2.0.2",
   "changeLog": [
-    "## v2.0.1 修复GD统一播放歌词不加载",
+    "## v2.0.2 修复点击更新闪退",
     "",
-    "- 修复：GD音乐台统一播放时歌词不加载的问题（播放合并音源时保留 GD 私有字段，歌词可正常按 GD 聚合接口获取）",
-    "- 修复：非GD平台歌曲（QQ/网易云/酷狗等歌单导入）播放时，歌曲信息携带 GD 匹配结果，确保歌词/换源走 GD 聚合源"
+    "- 修复：点击立即更新下载时闪退的问题（下载进度轮询在部分设备触发 UnsatisfiedLinkError，改用 putDouble 写入进度/网速/字节数）",
+    "- 说明：需要覆盖更新功能正常的场景，请确保网络可访问 Gitee/GitHub"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.0.1/MusicFree-2.0.1-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.1/MusicFree-2.0.1-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.0.2/MusicFree-2.0.2-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.2/MusicFree-2.0.2-universal.apk"
   ]
 }
