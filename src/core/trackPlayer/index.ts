@@ -1112,13 +1112,10 @@ class TrackPlayer extends EventEmitter<{
                 return null;
             }
 
-            // 2. 优先取标题+歌手完全一致的项，否则取第一个结果
-            const gdItem =
-                list.find(
-                    it =>
-                        it.title === musicItem.title &&
-                        it.artist === musicItem.artist,
-                ) ?? list[0];
+            // 2. GD 聚合源已在插件层按「歌名+歌手」命中质量排序（原唱优先），
+            // 直接取第一条即质量最高的版本；不再做严格 find，避免在排序好的
+            // 列表中误选靠后的同名翻唱/钢琴版
+            const gdItem = list[0];
 
             // 3. 依次尝试各音质获取播放地址
             for (const quality of qualityOrder) {
@@ -1183,12 +1180,9 @@ class TrackPlayer extends EventEmitter<{
                 return null;
             }
 
-            const gdItem =
-                list.find(
-                    it =>
-                        it.title === musicItem.title &&
-                        it.artist === musicItem.artist,
-                ) ?? list[0];
+            // GD 聚合源已在插件层按「歌名+歌手」命中质量排序（原唱优先），
+            // 直接取第一条即质量最高的版本
+            const gdItem = list[0];
 
             try {
                 const source =

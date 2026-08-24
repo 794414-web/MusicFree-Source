@@ -94,6 +94,9 @@ web-build/
 *.apk
 !release/*.apk
 
+# versionCode 递增记录文件（构建时自动生成，不上传）
+app_version.txt
+
 # 测试调试文件
 ui*.xml
 mock_update_server.py

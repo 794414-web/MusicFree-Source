@@ -162,21 +162,23 @@ async function searchMusicSheet(query, page) {
     };
 }
 async function searchLyric(query, page) {
-    var _a, _b;
+    var _a;
     const res = await searchBase(query, page, 1006);
-    const lyrics = (_b = (_a = res.result.songs) === null || _a === void 0 ? void 0 : _a.map((it) => {
+    const songs = (res === null || res === void 0 ? void 0 : res.result) && Array.isArray(res.result.songs) ? res.result.songs : [];
+    const lyrics = songs.map((it) => {
         var _a, _b, _c, _d;
+        const lyrText = Array.isArray(it.lyrics) ? it.lyrics.join("\n") : (typeof it.lyrics === "string" ? it.lyrics : "");
         return ({
             title: it.name,
             artist: (_a = it.ar) === null || _a === void 0 ? void 0 : _a.map((_) => _.name).join(", "),
             id: it.id,
             artwork: (_b = it.al) === null || _b === void 0 ? void 0 : _b.picUrl,
             album: (_c = it.al) === null || _c === void 0 ? void 0 : _c.name,
-            rawLrcTxt: (_d = it.lyrics) === null || _d === void 0 ? void 0 : _d.join("\n"),
+            rawLrcTxt: lyrText,
         });
-    })) !== null && _b !== void 0 ? _b : [];
+    });
     return {
-        isEnd: res.result.songCount <= page * pageSize,
+        isEnd: !(res === null || res === void 0 ? void 0 : res.result) || (res.result.songCount || 0) <= page * pageSize,
         data: lyrics,
     };
 }

@@ -98,7 +98,8 @@ async function searchMusicSheet(query, page) {
 }
 async function searchLyric(query, page) {
     const data = await searchBase(query, page, 7);
-    const lyrics = data.songs.map((result) => ({
+    const list = Array.isArray(data.songs) ? data.songs : [];
+    const lyrics = list.map((result) => ({
         title: result.title,
         id: result.id,
         artist: result.artist,

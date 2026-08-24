@@ -65,6 +65,111 @@ function formatSearchItem(item) {
     };
 }
 
+// ===== 匹配辅助 =====
+// 常用繁体字 -> 简体映射（覆盖歌名/歌手常见字，用于归一化匹配）
+var TRAD_TO_SIMPLE = {
+    "倫":"伦","傑":"杰","葉":"叶","黃":"黄","陳":"陈","張":"张","劉":"刘","楊":"杨",
+    "吳":"吴","鄭":"郑","馬":"马","謝":"谢","蘇":"苏","許":"许","趙":"赵","錢":"钱",
+    "孫":"孙","萬":"万","軍":"军","國":"国","華":"华","漢":"汉","愛":"爱","會":"会",
+    "還":"还","這":"这","個":"个","們":"们","來":"来","為":"为","麼":"么","說":"说",
+    "時":"时","間":"间","點":"点","龍":"龙","鳳":"凤","夢":"梦","獨":"独","潔":"洁",
+    "純":"纯","靜":"静","樂":"乐","館":"馆","觀":"观","歡":"欢","發":"发","長":"长",
+    "門":"门","問":"问","開":"开","關":"关","對":"对","錯":"错","過":"过","遠":"远",
+    "邊":"边","讓":"让","請":"请","詩":"诗","詞":"词","語":"语","話":"话","讀":"读",
+    "寫":"写","學":"学","習":"习","書":"书","畫":"画","紙":"纸","筆":"笔","電":"电",
+    "腦":"脑","機":"机","車":"车","輪":"轮","飛":"飞","風":"风","雲":"云","興":"兴",
+    "東":"东","頭":"头","兒":"儿","轉":"转","歷":"历","單":"单","雙":"双","聲":"声",
+    "聽":"听","歸":"归","舊":"旧","廣":"广","園":"园","燈":"灯","號":"号","線":"线",
+    "紅":"红","綠":"绿","藍":"蓝","銀":"银","鋼":"钢","錄":"录","簡":"简","編":"编",
+    "維":"维","結":"结","網":"网","組":"组","總":"总","經":"经","絕":"绝","續":"续",
+    "繼":"继","約":"约","級":"级","紀":"纪","繞":"绕","緣":"缘","縮":"缩","議":"议",
+    "譯":"译","護":"护","買":"买","賣":"卖","贊":"赞","貝":"贝","貴":"贵","賓":"宾",
+    "賬":"账","贈":"赠","質":"质","賭":"赌","贏":"赢","賢":"贤","賴":"赖","趣":"趣",
+    "躍":"跃","認":"认","誤":"误","誘":"诱","謊":"谎","謙":"谦","證":"证","譚":"谭",
+    "譜":"谱","響":"响","項":"项","順":"顺","須":"须","預":"预","頑":"顽","顧":"顾",
+    "顫":"颤","顯":"显","驗":"验","驚":"惊","騙":"骗","體":"体","髮":"发","鬍":"胡",
+    "魚":"鱼","魯":"鲁","鯊":"鲨","鯨":"鲸","鳥":"鸟","鴨":"鸭","鶯":"莺","鶴":"鹤",
+    "麥":"麦","麻":"麻","黑":"黑","齊":"齐","齒":"齿","齣":"出","龜":"龟","鼓":"鼓",
+    "臺":"台","颱":"台","鵬":"鹏","鷹":"鹰","麗":"丽","麋":"麋",
+};
+
+// 繁体转简体（仅处理映射表覆盖的常用字）
+function toSimplified(str) {
+    var s = String(str || "");
+    var out = "";
+    for (var i = 0; i < s.length; i++) {
+        var ch = s.charAt(i);
+        out += TRAD_TO_SIMPLE[ch] || ch;
+    }
+    return out;
+}
+
+// 归一化：繁体转简体、去空白、去括号及括号内容、转小写、去除常见标点
+// 用于「歌名 + 歌手」匹配，忽略繁简体/空格/括号注释差异，提高命中原唱概率
+function normText(str) {
+    return toSimplified(String(str || ""))
+        .toLowerCase()
+        .replace(/[\s\u3000]/g, "")
+        .replace(/[（(【\[][\s\S]*?[）)】\]]/g, "")
+        .replace(/[，。、；：！？!?·,.'"“”‘’\-—~：]/g, "");
+}
+
+// 格式化条目歌手（数组 -> 字符串）
+function artistText(item) {
+    return Array.isArray(item.artist)
+        ? item.artist.join("/")
+        : String(item.artist || "");
+}
+
+// 翻唱/伴奏/纯音乐/现场版等"非原唱版本"特征词（命中任一条即视为翻唱版本）
+// 用于搜索排序降权，让原唱版本排在翻唱、钢琴版、DJ版、现场版之前，
+// 避免用户点进纯音乐/翻唱版本导致歌词对不上（甚至无歌词）
+var COVER_PATTERNS = [
+    "版", "live", "现场", "cover", "翻唱", "钢琴", "吉他", "伴奏",
+    "纯音乐", "instrumental", "remix", "dj", "深情", "女声", "男声",
+    "串烧", "电音", "acoustic", "karaoke", "原唱", "正式版", "完整版",
+];
+
+// 判断条目是否为"非原唱版本"（标题含翻唱特征词）
+function isCoverVersion(item) {
+    var title = String(item.title || item.name || "").toLowerCase();
+    for (var i = 0; i < COVER_PATTERNS.length; i++) {
+        if (title.indexOf(COVER_PATTERNS[i]) !== -1) return true;
+    }
+    return false;
+}
+
+// 命中分数：2 = 标题 + 歌手都完全一致（原唱）；1 = 仅标题一致；0 = 其他
+// 翻唱/伴奏/纯音乐等版本在此基础上降权 1 分，保证原唱版本排在前面；
+// joox 源曲库以原唱录音为主，对「标题一致且非翻唱」的 joox 结果再加 0.5 分，
+// 让"晴天""夜曲"这类不带歌手的搜索也能把原唱顶到最前；
+// 搜索聚合后按分数排序，让原唱版本排在翻唱/钢琴版/现场版之前
+function matchScore(item, title, artist) {
+    var t = normText(title);
+    var a = normText(artist);
+    var it = normText(item.title || item.name);
+    var ia = normText(artistText(item));
+    var score = 0;
+    if (t && it === t && (!a || ia === a)) {
+        score = 2;
+    } else if (t && it === t) {
+        score = 1;
+    } else {
+        score = 0;
+    }
+    if (score > 0 && isCoverVersion(item)) {
+        score -= 1;
+    }
+    if (
+        score > 0 &&
+        !isCoverVersion(item) &&
+        (item._gdSource === "joox" || item.source === "joox")
+    ) {
+        score += 0.5;
+    }
+    return score;
+}
+
 // 单个音源搜索，失败静默降级为空数组
 function searchOneSource(source, query, page) {
     return requestGD({
@@ -163,6 +268,75 @@ function buildSourceCandidates(musicItem) {
     return { candidates: candidates, id: id, defaultSource: defaultSource };
 }
 
+// 歌词兜底：候选源（joox/bilibili/tencent 等）歌词为空时，
+// 用「歌名 + 歌手」并发搜索多个稳定源，按命中质量优先取原唱歌曲，再取其歌词。
+// 仅在直接取歌词失败时才调用，尽量节省接口频率额度。
+function fallbackSearchLyric(musicItem) {
+    var keyword = String(musicItem.title || "").trim();
+    if (!keyword) {
+        return Promise.resolve(null);
+    }
+    var artist = String(musicItem.artist || "").trim();
+    var name = artist ? keyword + " " + artist : keyword;
+    // 并发搜索多个稳定源，提高命中原唱的概率（netease 源常有翻唱污染，joox 源质量更稳）
+    var tasks = STABLE_SOURCES.map(function (source) {
+        return requestGD({
+            types: "search",
+            source: source,
+            name: name,
+            count: 10,
+            pages: 1,
+        })
+            .then(function (data) {
+                return Array.isArray(data) ? data : [];
+            })
+            .catch(function () {
+                return [];
+            });
+    });
+    return Promise.all(tasks)
+        .then(function (results) {
+            var all = [];
+            results.forEach(function (arr) {
+                all = all.concat(arr);
+            });
+            if (!all.length) {
+                return null;
+            }
+            // 按命中分数排序：优先「标题+歌手」完全一致的原唱
+            var scored = all
+                .map(function (it) {
+                    return { item: it, score: matchScore(it, keyword, artist) };
+                })
+                .sort(function (a, b) {
+                    return b.score - a.score;
+                });
+            var found = scored[0].item;
+            var nid = found.lyric_id || found.id;
+            var lyrSource = found.source || "netease";
+            return requestGD({
+                types: "lyric",
+                source: lyrSource,
+                id: nid,
+            })
+                .then(function (data2) {
+                    if (data2 && data2.lyric && !data2.lyric.includes("暂无歌词")) {
+                        return {
+                            rawLrc: data2.lyric,
+                            translation: data2.tlyric || undefined,
+                        };
+                    }
+                    return null;
+                })
+                .catch(function () {
+                    return null;
+                });
+        })
+        .catch(function () {
+            return null;
+        });
+}
+
 module.exports = {
     platform: "GD音乐台",
     author: "GD Studio",
@@ -184,11 +358,16 @@ module.exports = {
         ],
     },
 
-    // 搜索：并发请求多个稳定源并聚合
+    // 搜索：并发请求多个稳定源并聚合，按「歌名+歌手」命中质量排序，
+    // 让原唱版本排在翻唱/钢琴版/现场版之前，避免播放/歌词匹配到错误版本
     search: function (query, page, type) {
         if (type !== "music") {
             return Promise.resolve({ isEnd: true, data: [] });
         }
+        // 从查询词中拆出歌名与歌手（「歌名 歌手」/「歌名-歌手」格式）
+        var parts = String(query || "").trim().split(/[\s\-—]+/);
+        var title = parts[0] || "";
+        var artist = parts.slice(1).join(" ") || "";
         const tasks = STABLE_SOURCES.map(function (source) {
             return searchOneSource(source, query, page);
         });
@@ -197,9 +376,14 @@ module.exports = {
             results.forEach(function (arr) {
                 list = list.concat(arr);
             });
+            const mapped = list.map(formatSearchItem);
+            // 稳定排序：完全命中(标题+歌手) > 仅标题命中 > 其他；同分保持原始顺序
+            mapped.sort(function (a, b) {
+                return matchScore(b, title, artist) - matchScore(a, title, artist);
+            });
             return {
                 isEnd: true,
-                data: list.map(formatSearchItem),
+                data: mapped,
             };
         });
     },
@@ -246,14 +430,17 @@ module.exports = {
     },
 
     // 获取歌词（含翻译）：依次尝试候选源（记忆源 -> 默认源 -> 其他稳定源），
-    // 单个源歌词缺失/失败时降级到下一个源，提高歌词命中率
+    // 单个源歌词缺失/失败/占位（如「暂无歌词」）时降级到下一个源，提高歌词命中率；
+    // 候选源全部无歌词（joox/bilibili 等源歌词常为空）时，用「歌名+歌手」
+    // 并发搜索稳定源取原唱歌词
     getLyric: function (musicItem) {
         var srcInfo = buildSourceCandidates(musicItem);
         var id = musicItem._gdLyricId || musicItem._gdId || musicItem.id;
         var candidateIdx = 0;
         function nextCandidate() {
             if (candidateIdx >= srcInfo.candidates.length) {
-                return Promise.resolve(null);
+                // 兜底：搜索同名歌曲取歌词
+                return fallbackSearchLyric(musicItem);
             }
             var source = srcInfo.candidates[candidateIdx];
             candidateIdx += 1;
@@ -263,7 +450,8 @@ module.exports = {
                 id: id,
             })
                 .then(function (data) {
-                    if (data && data.lyric) {
+                    // 过滤「暂无歌词」等占位文本，避免把无效歌词当作有效结果
+                    if (data && data.lyric && !data.lyric.includes("暂无歌词")) {
                         return {
                             rawLrc: data.lyric,
                             translation: data.tlyric || undefined,

@@ -1,14 +1,15 @@
 {
-  "version": "2.0.3",
+  "version": "2.0.5",
   "changeLog": [
-    "## v2.0.3 验证更新流程",
+    "## v2.0.5 修复歌词匹配问题",
     "",
-    "- 修复：点击立即更新下载时闪退的问题（下载进度轮询 putLong 触发 UnsatisfiedLinkError，改用 putDouble）",
-    "- 本次发布用于验证模拟器/真机点击更新的完整下载安装流程",
-    "- 说明：请确保网络可访问 Gitee/GitHub"
+    "- 修复：搜索「晴天」「夜曲」等歌曲时，翻唱/钢琴版/现场版排在前面导致歌词对不上的问题（原唱优先排序）",
+    "- 修复：播放时 GD 音源私有字段丢失导致歌词走错源、匹配到错误歌曲的问题",
+    "- 修复：小蜜/小芸插件搜索歌词报错（Cannot read property 'map' / _d.join is not a function）",
+    "- 优化：搜索结果按「歌名+歌手」完全一致优先排序，繁体/简体歌名自动归一化匹配原唱版本"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.0.3/MusicFree-2.0.3-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.3/MusicFree-2.0.3-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.0.5/MusicFree-2.0.5-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.5/MusicFree-2.0.5-universal.apk"
   ]
 }

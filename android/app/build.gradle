@@ -104,6 +104,8 @@ static def getVersion() {
 }
 
 // 基于日期生成 versionCode: yyyyMMdd (8位)
+// 为支持同一天多次打包（versionCode 必须严格递增才能覆盖升级），
+// 使用记录文件 app_version.txt 保证每次构建 versionCode 比上次大 1
 static def getVersionCode() {
     def now = new Date()
     def cal = Calendar.getInstance()
@@ -111,7 +113,15 @@ static def getVersionCode() {
     def year = cal.get(Calendar.YEAR)
     def month = String.format('%02d', cal.get(Calendar.MONTH) + 1)
     def day = String.format('%02d', cal.get(Calendar.DAY_OF_MONTH))
-    return Integer.parseInt("${year}${month}${day}")
+    def dateCode = Integer.parseInt("${year}${month}${day}")
+    def file = new File("../app_version.txt")
+    def last = dateCode
+    if (file.exists() && file.text.trim().isInteger()) {
+        last = file.text.trim().toInteger()
+    }
+    def vc = Math.max(dateCode, last + 1)
+    file.text = vc.toString()
+    return vc
 }
 
 def appVersion = getVersion()
