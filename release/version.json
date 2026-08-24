@@ -1,13 +1,14 @@
 {
-  "version": "2.0.2",
+  "version": "2.0.3",
   "changeLog": [
-    "## v2.0.2 修复点击更新闪退",
+    "## v2.0.3 验证更新流程",
     "",
-    "- 修复：点击立即更新下载时闪退的问题（下载进度轮询在部分设备触发 UnsatisfiedLinkError，改用 putDouble 写入进度/网速/字节数）",
-    "- 说明：需要覆盖更新功能正常的场景，请确保网络可访问 Gitee/GitHub"
+    "- 修复：点击立即更新下载时闪退的问题（下载进度轮询 putLong 触发 UnsatisfiedLinkError，改用 putDouble）",
+    "- 本次发布用于验证模拟器/真机点击更新的完整下载安装流程",
+    "- 说明：请确保网络可访问 Gitee/GitHub"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.0.2/MusicFree-2.0.2-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.2/MusicFree-2.0.2-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.0.3/MusicFree-2.0.3-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.3/MusicFree-2.0.3-universal.apk"
   ]
 }
