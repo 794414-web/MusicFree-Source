@@ -581,8 +581,9 @@ class TrackPlayer extends EventEmitter<{
                 // @ts-ignore
                 source.type = "hls";
             }
-            // 7. 合并结果
-            track = this.mergeTrackSource(musicItem, source) as IMusic.IMusicItem;
+            // 7. 合并结果：使用 playItem（GD 场景为带 _gdSource/_gdId/_gdLyricId 的搜索结果），
+            // 保证 currentMusic 携带 GD 私有字段，歌词/换源均能正确走 GD 聚合接口
+            track = this.mergeTrackSource(playItem, source) as IMusic.IMusicItem;
 
             // 8. 新增历史记录
             this.musicHistoryService.addMusic(musicItem);
