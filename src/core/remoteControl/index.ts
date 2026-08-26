@@ -172,6 +172,12 @@ class RemoteControlService {
 
     /**
      * 建立 WebSocket 连接
+     *
+     * 改进点：
+     * 1. 连接超时守卫：onopen 未在 15 秒内触发则主动关闭并重连，
+     *    防止某些网络环境下 WebSocket 长时间卡在 CONNECTING 状态。
+     * 2. onerror 兜底重连：部分场景下 onerror 不会跟随 onclose，
+     *    若 ws 仍为当前实例则主动触发一次重连。
      */
     private connect() {
         if (this.stopped) {
@@ -180,7 +186,7 @@ class RemoteControlService {
 
         const wsUrl = this.config.wsUrl?.trim();
         if (!wsUrl || !isValidWsUrl(wsUrl)) {
-            errorLog("WebSocket 地址无效，跳过连接");
+            errorLog("WebSocket 地址无效，跳过连接", "");
             return;
         }
 
@@ -197,7 +203,30 @@ class RemoteControlService {
         }
         this.ws = ws;
 
+        // 连接超时守卫：15 秒未握手成功则强制关闭进入重连流程
+        const connectTimeout = setTimeout(() => {
+            if (this.ws !== ws) {
+                return; // 已被替换或关闭
+            }
+            if (ws.readyState === WebSocket.OPEN) {
+                return; // 已连接成功
+            }
+            errorLog("WebSocket 连接超时（15s），主动关闭并重连", "");
+            try {
+                ws.onopen = null;
+                ws.onmessage = null;
+                ws.onerror = null;
+                ws.onclose = null;
+                ws.close();
+            } catch {
+                // ignore
+            }
+            this.ws = null;
+            this.scheduleReconnect();
+        }, 15000);
+
         ws.onopen = () => {
+            clearTimeout(connectTimeout);
             if (this.stopped || this.ws !== ws) {
                 return;
             }
@@ -241,10 +270,27 @@ class RemoteControlService {
                 return;
             }
             // RN 的 onerror event 没有 message 字段，不要访问可能不存在的属性
-            errorLog("WebSocket 错误");
+            errorLog("WebSocket 错误", "");
+            // 兜底：部分场景 onerror 后不会触发 onclose，若 ws 仍为当前实例
+            // 且未处于 OPEN 状态，主动清理并重连，避免连接卡死
+            if (this.ws === ws && ws.readyState !== WebSocket.OPEN) {
+                clearTimeout(connectTimeout);
+                try {
+                    ws.onopen = null;
+                    ws.onmessage = null;
+                    ws.onerror = null;
+                    ws.onclose = null;
+                    ws.close();
+                } catch {
+                    // ignore
+                }
+                this.ws = null;
+                this.scheduleReconnect();
+            }
         };
 
         ws.onclose = (e: WebSocketCloseEvent) => {
+            clearTimeout(connectTimeout);
             if (this.stopped || this.ws !== ws) {
                 return;
             }
@@ -291,7 +337,14 @@ class RemoteControlService {
     }
 
     /**
-     * 定时重连（带最大次数限制，避免无限重连耗尽资源）
+     * 定时重连（指数退避 + 抖动，带最大次数限制）
+     *
+     * 改进点（相比原线性退避 3s×count）：
+     * 1. 指数退避：baseDelay × 2^(n-1)，首次 1s 快速重试，后续逐步放慢，
+     *    比线性更早发现恢复的网络，同时避免高频重连耗电。
+     * 2. 随机抖动：0~1s 随机偏移，避免多台车机同时掉线后同步重连
+     *    形成「雷群效应」冲击 MCP 服务。
+     * 3. 上限 60s，超过后保持该间隔继续尝试。
      */
     private scheduleReconnect() {
         if (this.stopped) {
@@ -302,12 +355,19 @@ class RemoteControlService {
         }
         this.reconnectCount++;
         if (this.reconnectCount > MAX_RECONNECT_ATTEMPTS) {
-            errorLog(`已达到最大重连次数 ${MAX_RECONNECT_ATTEMPTS}，停止重连`);
+            errorLog(`已达到最大重连次数 ${MAX_RECONNECT_ATTEMPTS}，停止重连`, "");
             this.reconnectCount = 0;
             return;
         }
-        const delay = Math.min(3000 * this.reconnectCount, 60000);
-        trace(`${delay / 1000}秒后重连 MCP 服务 (第${this.reconnectCount}次)`);
+        const baseDelay = 1000;
+        const maxDelay = 60000;
+        const exponentialDelay = Math.min(
+            baseDelay * Math.pow(2, this.reconnectCount - 1),
+            maxDelay,
+        );
+        const jitter = Math.random() * 1000;
+        const delay = Math.round(exponentialDelay + jitter);
+        trace(`${(delay / 1000).toFixed(1)}秒后重连 MCP 服务 (第${this.reconnectCount}次)`);
         this.reconnectTimer = setTimeout(() => {
             this.reconnectTimer = null;
             this.connect();

@@ -1,16 +1,17 @@
 import rpx, { vmax } from "@/utils/rpx";
 import React, { useState } from "react";
-import { StyleSheet, View, TouchableOpacity, TextInput } from "react-native";
+import { StyleSheet, View, TextInput } from "react-native";
 
 import { fontSizeConst } from "@/constants/uiConst";
 import lyricManager from "@/core/lyricManager";
 import mediaCache from "@/core/mediaCache";
 import useColors from "@/hooks/useColors";
+import usePaste from "@/hooks/usePaste";
 import { errorLog } from "@/utils/log";
 import { parseMediaUniqueKey } from "@/utils/mediaUtils";
 import Toast from "@/utils/toast";
 import Clipboard from "@react-native-clipboard/clipboard";
-import ThemeText from "@/components/base/themeText";
+import PasteButton from "@/components/base/pasteButton";
 import PanelBase from "../base/panelBase";
 import PanelHeader from "../base/panelHeader";
 import { hidePanel } from "../usePanel";
@@ -26,20 +27,8 @@ export default function AssociateLrc(props: INewMusicSheetProps) {
     const [input, setInput] = useState("");
     const colors = useColors();
     const { t } = useI18N();
-
-    async function handlePaste() {
-        try {
-            const content = await Clipboard.getString();
-            if (content) {
-                setInput(content);
-                Toast.success(t("common.pasted"));
-            } else {
-                Toast.warn(t("common.clipboardEmpty"));
-            }
-        } catch {
-            Toast.warn(t("common.pasteFail"));
-        }
-    }
+    // 统一的粘贴函数,内部已封装 Clipboard 读取 + Toast 提示
+    const paste = usePaste();
 
     return (
         <PanelBase
@@ -104,19 +93,10 @@ export default function AssociateLrc(props: INewMusicSheetProps) {
                             placeholder={t("panel.associateLrc.inputPlaceholder")}
                             maxLength={80}
                         />
-                        <TouchableOpacity
-                            style={[
-                                style.pasteBtn,
-                                { backgroundColor: colors.primary },
-                            ]}
-                            onPress={handlePaste}>
-                            <ThemeText
-                                fontWeight="medium"
-                                color="#fff"
-                                fontSize="subTitle">
-                                {t("common.paste")}
-                            </ThemeText>
-                        </TouchableOpacity>
+                        <PasteButton
+                            size="compact"
+                            onPress={() => paste(setInput)}
+                        />
                     </View>
                 </>
             )}
@@ -137,12 +117,5 @@ const style = StyleSheet.create({
         lineHeight: fontSizeConst.content * 1.5,
         padding: rpx(12),
         marginRight: rpx(16),
-    },
-    pasteBtn: {
-        height: rpx(72),
-        paddingHorizontal: rpx(24),
-        borderRadius: rpx(12),
-        justifyContent: "center",
-        alignItems: "center",
     },
 });

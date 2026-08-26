@@ -41,8 +41,6 @@ import { IPluginManager } from "@/types/core/pluginManager";
 import { ImgAsset } from "@/constants/assetsConst";
 import { resolveImportedAssetOrPath } from "@/utils/fileUtils";
 
-
-
 const currentMusicAtom = atom<IMusic.IMusicItem | null>(null);
 const repeatModeAtom = atom<MusicRepeatMode>(MusicRepeatMode.QUEUE);
 const qualityAtom = atom<IMusic.IQualityKey>("standard");
@@ -531,22 +529,19 @@ class TrackPlayer extends EventEmitter<{
                 musicItem.platform === "GD音乐台" &&
                 plugin?.methods?.getMediaSource
             ) {
-                for (let quality of qualityOrder) {
-                    if (this.isCurrentMusic(musicItem)) {
-                        source =
-                            (await plugin?.methods?.getMediaSource(
-                                musicItem,
-                                quality,
-                            )) ?? null;
-                        // 5.3.1 获取到真实源
-                        if (source) {
-                            this.setQuality(quality);
-                            break;
-                        }
-                    } else {
-                        // 5.3.2 已经切换到其他歌曲了，
-                        return;
-                    }
+                // 循环中切歌则中止:与原 inline 循环行为一致
+                const gdResult = await this.getMediaSourceByQualityOrder(
+                    plugin,
+                    musicItem,
+                    qualityOrder,
+                    () => !this.isCurrentMusic(musicItem),
+                );
+                if (gdResult) {
+                    source = gdResult.source;
+                    this.setQuality(gdResult.quality);
+                } else if (!this.isCurrentMusic(musicItem)) {
+                    // 5.3.2 已经切换到其他歌曲了
+                    return;
                 }
             }
 
@@ -946,19 +941,73 @@ class TrackPlayer extends EventEmitter<{
     >();
     private gdSearchCacheTTL = 10 * 60 * 1000;
 
+    /**
+     * 按音质优先级顺序调用插件 getMediaSource,获取第一个可用的播放地址。
+     *
+     * 统一封装了 play / tryPlayWithAnotherSource / tryGetGDMediaSource 三处
+     * 重复的"循环 qualityOrder → 守卫是否切歌 → 调插件 → try/catch 容错"流程。
+     *
+     * @param plugin 携带 methods 的插件对象(可能为 undefined/null)
+     * @param musicItem 用来取源的歌曲
+     * @param qualityOrder 音质优先级数组(高→低)
+     * @param abortCheck 可选中止检查,返回 true 时立即放弃当前循环(用于切歌中止)
+     * @returns 命中则返回 {source, quality},否则 null
+     */
+    private async getMediaSourceByQualityOrder(
+        plugin:
+            | {
+                  methods?: {
+                      getMediaSource?: IPlugin.IPluginInstance["getMediaSource"];
+                  };
+              }
+            | undefined
+            | null,
+        musicItem: IMusic.IMusicItemBase,
+        qualityOrder: IMusic.IQualityKey[],
+        abortCheck?: () => boolean,
+    ): Promise<{
+        source: IPlugin.IMediaSourceResult;
+        quality: IMusic.IQualityKey;
+    } | null> {
+        if (!plugin?.methods?.getMediaSource) {
+            return null;
+        }
+        for (const quality of qualityOrder) {
+            // 循环中途切歌则放弃,与原 3 处 inline 循环行为一致
+            if (abortCheck?.()) {
+                return null;
+            }
+            try {
+                const source =
+                    (await plugin.methods.getMediaSource(
+                        musicItem,
+                        quality,
+                    )) ?? null;
+                if (source) {
+                    return { source, quality };
+                }
+            } catch {
+                // 该音质获取失败(源失效/网络错误等):跳过继续尝试下一档
+            }
+        }
+        return null;
+    }
+
     private async handlePlayFail() {
         // 整体容错：任何一步出错（换源/跳转）都不能变成未处理的 Promise rejection 导致闪退
         try {
             // 先尝试搜索并切换到其他音源播放当前歌曲，避免直接跳到下一首
             if (this.configService.getConfig("basic.tryChangeSourceWhenPlayFail")) {
-                // 防重入：15 秒内已换过源则不再重复搜索，
-                // 避免音源全部失效时反复换源导致卡死/内存暴涨
+                // 防重入：15 秒内已尝试过换源则不再重复搜索,
+                // 避免音源全部失效时反复换源导致卡死/内存暴涨。
+                // 注意:进入分支即立刻刷新时间戳,覆盖"换源成功 + 换源失败 + 切歌中止"
+                // 三种结果,保证 15 秒内不会二次发起搜索请求。
                 if (Date.now() - this.lastSourceSwitchAt > 15000) {
+                    this.lastSourceSwitchAt = Date.now();
                     const switched = await this.tryPlayWithAnotherSource(
                         this.currentMusic,
                     );
                     if (switched) {
-                        this.lastSourceSwitchAt = Date.now();
                         return;
                     }
                 }
@@ -1008,30 +1057,19 @@ class TrackPlayer extends EventEmitter<{
             this.configService.getConfig("basic.defaultPlayQuality") ?? "standard",
             this.configService.getConfig("basic.playQualityOrder") ?? "asc",
         );
-        let source: IPlugin.IMediaSourceResult | null = null;
-        for (let quality of qualityOrder) {
-            if (!this.isCurrentMusic(musicItem)) {
-                return false;
-            }
-            try {
-                source =
-                    (await plugin?.methods?.getMediaSource(
-                        similarMusic,
-                        quality,
-                    )) ?? null;
-            } catch {
-                // 新音源插件异常（源失效等）：跳过该音质继续尝试
-                source = null;
-            }
-            if (source) {
-                this.setQuality(quality);
-                break;
-            }
-        }
-        if (!source || !this.isCurrentMusic(musicItem)) {
+        // 循环中切歌则中止:与原 inline 循环行为一致
+        const sourceResult = await this.getMediaSourceByQualityOrder(
+            plugin,
+            similarMusic,
+            qualityOrder,
+            () => !this.isCurrentMusic(musicItem),
+        );
+        if (!sourceResult || !this.isCurrentMusic(musicItem)) {
             trace("播放失败，新音源无法获取播放地址", musicItem.title);
             return false;
         }
+        const source = sourceResult.source;
+        this.setQuality(sourceResult.quality);
 
         // 3. 用新音源的信息更新当前歌曲（保持原 id 不变，更新平台与播放地址），实现持久换源
         const mergedTrack = {
@@ -1117,27 +1155,19 @@ class TrackPlayer extends EventEmitter<{
             // 列表中误选靠后的同名翻唱/钢琴版
             const gdItem = list[0];
 
-            // 3. 依次尝试各音质获取播放地址
-            for (const quality of qualityOrder) {
-                if (!this.isCurrentMusic(musicItem)) {
-                    return null;
-                }
-                try {
-                    const source =
-                        (await gdPlugin.methods.getMediaSource(
-                            gdItem,
-                            quality,
-                        )) ?? null;
-                    if (source?.url) {
-                        return {
-                            source,
-                            musicItem: gdItem as IMusic.IMusicItem,
-                            quality,
-                        };
-                    }
-                } catch {
-                    // 该音质获取失败，继续尝试下一档
-                }
+            // 3. 依次尝试各音质获取播放地址(切歌则中止)
+            const gdSourceResult = await this.getMediaSourceByQualityOrder(
+                gdPlugin,
+                gdItem as IMusic.IMusicItem,
+                qualityOrder,
+                () => !this.isCurrentMusic(musicItem),
+            );
+            if (gdSourceResult) {
+                return {
+                    source: gdSourceResult.source,
+                    musicItem: gdItem as IMusic.IMusicItem,
+                    quality: gdSourceResult.quality,
+                };
             }
             return null;
         } catch (e: any) {

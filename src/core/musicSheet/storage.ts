@@ -1,12 +1,16 @@
 import getOrCreateMMKV from "@/utils/getOrCreateMMKV.ts";
 import { InteractionManager } from "react-native";
 import { SortType } from "@/constants/commonConst.ts";
-import { safeParse, safeStringify } from "@/utils/jsonUtil";
+import { safeParseArray, safeStringify } from "@/utils/jsonUtil";
 
-function getStorageData(key: string) {
+/**
+ * 读取单个 key 的列表数据。
+ * 内部走 safeParseArray 容错,损坏数据/非数组一律兜底为空数组,
+ * 避免上层 Array.isArray 检查 + null 兜底的样板代码。
+ */
+function getStorageData<T = any>(key: string): T[] {
     const mmkv = getOrCreateMMKV(`LocalSheet.${key}`);
-
-    return safeParse(mmkv.getString("data"));
+    return safeParseArray<T>(mmkv.getString("data"));
 }
 
 async function setStorageData(key: string, value: any) {
@@ -33,7 +37,7 @@ async function setSheets(sheets: IMusic.IMusicSheetItemBase[]) {
  * 获取歌单的基本信息
  */
 function getSheets(): IMusic.IMusicSheetItemBase[] {
-    return getStorageData("music-sheets");
+    return getStorageData<IMusic.IMusicSheetItemBase>("music-sheets");
 }
 
 /**
@@ -48,7 +52,7 @@ async function setStarredSheets(sheets: IMusic.IMusicSheetItemBase[]) {
  * 获取歌单的基本信息
  */
 function getStarredSheets(): IMusic.IMusicSheetItem[] {
-    return getStorageData("starred-sheets");
+    return getStorageData<IMusic.IMusicSheetItem>("starred-sheets");
 }
 
 /**
@@ -66,7 +70,7 @@ async function setMusicList(sheetId: string, musicList: IMusic.IMusicItem[]) {
  * @returns 歌曲列表
  */
 function getMusicList(sheetId: string): IMusic.IMusicItem[] {
-    return getStorageData(sheetId);
+    return getStorageData<IMusic.IMusicItem>(sheetId);
 }
 
 /**

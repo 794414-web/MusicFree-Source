@@ -1,11 +1,11 @@
 import React, { useRef, useState } from "react";
-import { KeyboardAvoidingView, StyleSheet, View, TouchableOpacity, TextInput } from "react-native";
+import { KeyboardAvoidingView, StyleSheet, View, TextInput } from "react-native";
 import rpx, { vmax } from "@/utils/rpx";
 import useColors from "@/hooks/useColors";
+import usePaste from "@/hooks/usePaste";
 
 import ThemeText from "@/components/base/themeText";
-import Clipboard from "@react-native-clipboard/clipboard";
-import Toast from "@/utils/toast";
+import PasteButton from "@/components/base/pasteButton";
 import { ScrollView } from "react-native-gesture-handler";
 import PanelBase from "../base/panelBase";
 import { hidePanel } from "../usePanel";
@@ -30,21 +30,9 @@ export default function SetUserVariables(props: IUserVariablesProps) {
 
     const resultRef = useRef({ ...initValues });
     const [values, setValues] = useState<Record<string, string>>({ ...initValues });
-
-    async function handlePaste(key: string) {
-        try {
-            const content = await Clipboard.getString();
-            if (content) {
-                resultRef.current[key] = content;
-                setValues(prev => ({ ...prev, [key]: content }));
-                Toast.success(t("common.pasted"));
-            } else {
-                Toast.warn(t("common.clipboardEmpty"));
-            }
-        } catch {
-            Toast.warn(t("common.pasteFail"));
-        }
-    }
+    // 统一的粘贴函数,内部已封装 Clipboard 读取 + Toast 提示。
+    // 多字段场景下传入自定义 setter,同时写入 resultRef 与 values state。
+    const paste = usePaste();
 
     return (
         <PanelBase
@@ -104,19 +92,18 @@ export default function SetUserVariables(props: IUserVariablesProps) {
                                                 placeholderTextColor={colors.textSecondary}
                                             />
                                         </View>
-                                        <TouchableOpacity
-                                            style={[
-                                                styles.pasteBtn,
-                                                { backgroundColor: colors.primary },
-                                            ]}
-                                            onPress={() => handlePaste(it.key)}>
-                                            <ThemeText
-                                                fontWeight="medium"
-                                                color="#fff"
-                                                fontSize="subTitle">
-                                                {t("common.paste")}
-                                            </ThemeText>
-                                        </TouchableOpacity>
+                                        <PasteButton
+                                            size="compact"
+                                            onPress={() =>
+                                                paste(content => {
+                                                    resultRef.current[it.key] = content;
+                                                    setValues(prev => ({
+                                                        ...prev,
+                                                        [it.key]: content,
+                                                    }));
+                                                })
+                                            }
+                                        />
                                     </View>
                                 </ListItem>
                             ))}
@@ -150,13 +137,5 @@ const styles = StyleSheet.create({
         paddingHorizontal: rpx(14),
         borderRadius: rpx(8),
         fontSize: rpx(28),
-    },
-    pasteBtn: {
-        height: rpx(64),
-        paddingHorizontal: rpx(18),
-        borderRadius: rpx(8),
-        justifyContent: "center",
-        alignItems: "center",
-        marginLeft: rpx(12),
     },
 });

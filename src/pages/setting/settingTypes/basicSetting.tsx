@@ -563,11 +563,12 @@ export default function BasicSetting() {
                                 value: v,
                             })),
                             onOk(val) {
+                                const numVal = Number(val);
                                 Config.setConfig(
                                     "basic.memoryCleanupThreshold",
-                                    val,
+                                    numVal,
                                 );
-                                updateCleanupConfig({ thresholdMB: val });
+                                updateCleanupConfig({ thresholdMB: numVal });
                             },
                         });
                     },
@@ -589,11 +590,12 @@ export default function BasicSetting() {
                                 { label: "每 2 小时", value: 120 },
                             ],
                             onOk(val) {
+                                const numVal = Number(val);
                                 Config.setConfig(
                                     "basic.memoryCleanupInterval",
-                                    val,
+                                    numVal,
                                 );
-                                updateCleanupConfig({ intervalMin: val });
+                                updateCleanupConfig({ intervalMin: numVal });
                             },
                         });
                     },

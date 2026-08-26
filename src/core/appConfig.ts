@@ -4,7 +4,7 @@ import { getStorage, removeStorage } from "@/utils/storage";
 import getOrCreateMMKV from "@/utils/getOrCreateMMKV.ts";
 
 import type { AppConfigPropertyKey, IAppConfig, IAppConfigProperties } from "@/types/core/config";
-import { safeStringify } from "@/utils/jsonUtil";
+import { safeParse, safeStringify } from "@/utils/jsonUtil";
 
 const configStore = getOrCreateMMKV("App.config");
 
@@ -190,13 +190,9 @@ class AppConfig implements IAppConfig {
         if (value === undefined) {
             return undefined;
         }
-        try {
-            return JSON.parse(value);
-        } catch {
-            // 配置值损坏（如历史版本写入异常/部分写入）时兜底为 undefined，
-            // 避免在启动阶段 JSON.parse 抛异常导致整个应用无法初始化（表现为闪退）
-            return undefined;
-        }
+        // 统一走 safeParse,配置值损坏时兜底为 undefined,
+        // 避免启动阶段 JSON.parse 抛异常导致整个应用闪退
+        return safeParse<IAppConfigProperties[K]>(value) ?? undefined;
     }
 }
 

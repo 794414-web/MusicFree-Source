@@ -73,8 +73,8 @@ export default function RemoteControlSetting() {
 
             // 只有当 wsUrl 发生真实变化时才更新 config 显示
             if (latestConfig.wsUrl !== lastUrlRef.current) {
-                setConfig(latestConfig);
-                lastUrlRef.current = latestConfig.wsUrl;
+                setConfig({ ...latestConfig, wsUrl: latestConfig.wsUrl ?? "" });
+                lastUrlRef.current = latestConfig.wsUrl ?? "";
                 // 同步输入框（只有在用户未聚焦时才同步，避免覆盖用户输入）
                 const simplified = simplifyWsUrl(latestConfig.wsUrl || "");
                 setAddressInput(simplified);
@@ -209,7 +209,7 @@ export default function RemoteControlSetting() {
                         />
                     </View>
                     <View style={style.currentAddressRow}>
-                        <ThemeText fontSize="small" fontColor="textSecondary">
+                        <ThemeText fontSize="description" fontColor="textSecondary">
                             当前: {config.wsUrl || "未设置"}
                         </ThemeText>
                     </View>

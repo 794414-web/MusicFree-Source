@@ -3,11 +3,11 @@ import { StyleSheet, View, TouchableOpacity, TextInput } from "react-native";
 import rpx, { vh } from "@/utils/rpx";
 import { fontSizeConst } from "@/constants/uiConst";
 import useColors from "@/hooks/useColors";
+import usePaste from "@/hooks/usePaste";
 
 import ThemeText from "@/components/base/themeText";
+import PasteButton from "@/components/base/pasteButton";
 import { ScrollView } from "react-native-gesture-handler";
-import Clipboard from "@react-native-clipboard/clipboard";
-import Toast from "@/utils/toast";
 import PanelBase from "../base/panelBase";
 import { hidePanel } from "../usePanel";
 import { useI18N } from "@/core/i18n";
@@ -40,26 +40,14 @@ export default function SimpleInput(props: ISimpleInputProps) {
     const colors = useColors();
     const inputRef = useRef<TextInput>(null);
     const hasFocusedRef = useRef(false);
+    // 统一的粘贴函数,内部已封装 Clipboard 读取 + Toast 提示
+    const paste = usePaste();
 
     // 注意：这里不再做“键盘隐藏后自动重新聚焦”的兜底。
     // 早期版本为规避“方向误判导致面板重排、输入法自动关闭”加了自动重新聚焦，
     // 但根因已通过 useOrientation 改用 screen 尺寸修复；
     // 保留自动聚焦反而会在部分 ROM 上造成输入法反复弹出、无法输入的循环。
     // 现在仅保留面板打开时的一次性聚焦，之后由用户点击输入框唤起输入法。
-
-    async function handlePaste() {
-        try {
-            const content = await Clipboard.getString();
-            if (content) {
-                setInput(content);
-                Toast.success(t("common.pasted"));
-            } else {
-                Toast.warn(t("common.clipboardEmpty"));
-            }
-        } catch {
-            Toast.warn(t("common.pasteFail"));
-        }
-    }
 
     return (
         <PanelBase
@@ -114,7 +102,7 @@ export default function SimpleInput(props: ISimpleInputProps) {
                                     styles.pasteBtn,
                                     { backgroundColor: colors.placeholder },
                                 ]}
-                                onPress={handlePaste}>
+                                onPress={() => paste(setInput)}>
                                 <ThemeText
                                     fontWeight="medium"
                                     fontSize="subTitle">

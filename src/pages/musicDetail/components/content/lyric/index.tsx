@@ -15,7 +15,7 @@ import LyricItemComponent from "./lyricItem";
 import PersistStatus from "@/utils/persistStatus";
 import LyricOperations from "./lyricOperations";
 import { IParsedLrcItem } from "@/utils/lrcParser";
-import { IconButtonWithGesture } from "@/components/base/iconButton.tsx";
+import IconButton from "@/components/base/iconButton.tsx";
 import { getMediaExtraProperty } from "@/utils/mediaExtra";
 import lyricManager, { useCurrentLyricItem, useLyricState } from "@/core/lyricManager";
 import { useI18N } from "@/core/i18n";
@@ -354,7 +354,7 @@ export default function Lyric(props: IProps) {
                             />
                             <View style={styles.singleLine} />
 
-                            <IconButtonWithGesture
+                            <IconButton
                                 style={styles.playIcon}
                                 sizeType='normal'
                                 name="play"

@@ -47,6 +47,14 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
         private const val APK_FILE_NAME = "MusicFree-update.apk"
         private const val EVENT_NAME = "apkUpdateProgress"
         private const val ACTION_INSTALL_RESULT = "fun.upup.musicfree.INSTALL_RESULT"
+
+        // version.json 三线回退地址（Gitee raw → GitHub raw → jsDelivr CDN）
+        // 修改仓库路径时只需改这里，无需在 checkUpdate 方法体内搜索
+        private val VERSION_JSON_URLS = listOf(
+            "https://gitee.com/ken794414/MusicFree-Source/raw/main/release/version.json",
+            "https://raw.githubusercontent.com/794414-web/MusicFree-Source/main/release/version.json",
+            "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@main/release/version.json"
+        )
     }
 
     private var installReceiverRegistered = false
@@ -120,11 +128,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun checkUpdate(currentVersion: String, promise: Promise) {
-        val urls = listOf(
-            "https://gitee.com/ken794414/MusicFree-Source/raw/main/release/version.json",
-            "https://raw.githubusercontent.com/794414-web/MusicFree-Source/main/release/version.json",
-            "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@main/release/version.json"
-        )
+        val urls = VERSION_JSON_URLS
         Log.d(TAG, "checkUpdate: currentVersion=$currentVersion, urls=${urls.size}")
 
         val scope = CoroutineScope(Dispatchers.IO)

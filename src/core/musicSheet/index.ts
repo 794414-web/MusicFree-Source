@@ -58,15 +58,9 @@ class MusicSheetClazz implements IInjectable {
         // 升级逻辑 - 从 AsyncStorage 升级到 MMKV
         await migrate();
         try {
-            let allSheets: IMusic.IMusicSheetItemBase[] = storage.getSheets();
-
-            if (!Array.isArray(allSheets)) {
-                throw new Error("not exist");
-            }
-
-            // 过滤历史数据中的畸形歌单项（null / 非对象 / 缺 id 等，其他源残留数据常见），
-            // 避免访问 allSheets[0].id 时空项抛错导致启动失败
-            allSheets = allSheets.filter(
+            // storage.getSheets 已通过 safeParseArray 兜底为空数组,
+            // 这里只需过滤"缺 id"等字段缺失的畸形项(其他源残留数据常见)
+            let allSheets: IMusic.IMusicSheetItemBase[] = storage.getSheets().filter(
                 it =>
                     it &&
                     typeof it === "object" &&
@@ -103,13 +97,9 @@ class MusicSheetClazz implements IInjectable {
             }
 
             for (let sheet of allSheets) {
-                const rawMusicList = storage.getMusicList(sheet.id);
-                // 歌单歌曲数据可能缺失或畸形（其他源残留数据常见），
-                // 兜底为空数组并过滤非法项（null / 缺 id / 缺 platform），
-                // 避免 musicList.length、forEach、展开运算符对 null/畸形项抛错导致启动失败
-                const musicList = (
-                    Array.isArray(rawMusicList) ? rawMusicList : []
-                ).filter(
+                // storage.getMusicList 已通过 safeParseArray 兜底为空数组,
+                // 这里过滤"缺 id 或缺 platform"的畸形项(其他源残留数据常见)
+                const musicList = storage.getMusicList(sheet.id).filter(
                     it =>
                         it &&
                         typeof it === "object" &&
@@ -138,19 +128,18 @@ class MusicSheetClazz implements IInjectable {
 
             // 收藏的歌单
             const starredSheets: IMusic.IMusicSheetItem[] =
-                storage.getStarredSheets() || [];
+                storage.getStarredSheets();
             getDefaultStore().set(starredMusicSheetsAtom, starredSheets);
 
         } catch (e: any) {
-            if (e.message === "not exist") {
-                await storage.setSheets([_defaultSheet]);
-                await storage.setMusicList(_defaultSheet.id, []);
-                getDefaultStore().set(musicSheetsBaseAtom, [_defaultSheet]);
-                musicListMap.set(
-                    _defaultSheet.id,
-                    new SortedMusicList([], SortType.None, true),
-                );
-            }
+            // 兜底:启动阶段发生未预期异常时,恢复默认歌单,保证应用可用
+            await storage.setSheets([_defaultSheet]);
+            await storage.setMusicList(_defaultSheet.id, []);
+            getDefaultStore().set(musicSheetsBaseAtom, [_defaultSheet]);
+            musicListMap.set(
+                _defaultSheet.id,
+                new SortedMusicList([], SortType.None, true),
+            );
         }
 
 

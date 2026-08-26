@@ -54,6 +54,16 @@ const BUILTIN_PLUGIN_ALL_FILES: string[] = [
     "sixyin.js",
 ];
 
+/**
+ * Linking URL 监听去重标志。
+ *
+ * DEV 模式下热重载会重新执行 bootstrap 流程，若不守卫会导致
+ * Linking.addEventListener("url", ...) 被重复注册，同一个 URL 事件
+ * 触发多次 handleLinkingUrl 调用（重复安装插件/重复播放）。
+ * 生产模式下只会执行一次，该标志恒为 false→true 单次转换。
+ */
+let linkingListenerRegistered = false;
+
 
 // 依赖管理
 PluginManager.injectDependencies(Config);
@@ -97,6 +107,8 @@ function setupLowMemoryDefaults() {
         ["basic.autoMemoryCleanup", true],
         ["basic.memoryCleanupThreshold", 300],
         ["basic.memoryCleanupInterval", 15],
+        // 媒体缓存上限:低内存设备设 400(默认 800),减少长期运行的内存占用
+        ["basic.mediaCacheMaxCount", 400],
     ];
 
     defaults.forEach(([key, value]) => {
@@ -125,6 +137,23 @@ function initMemoryCleanupConfig() {
     }
 }
 
+
+/**
+ * 安全执行启动步骤：捕获异常并打印统一格式的错误日志，避免单步失败导致整个启动流程中断。
+ * 行为与原 inline try/catch 完全一致（console.error(`${name}失败:`, e)），
+ * 仅消除 bootstrapImpl 中 4 处重复的 try/catch 模板。
+ */
+async function safeStep<T>(
+    name: string,
+    fn: () => Promise<T> | T,
+): Promise<T | undefined> {
+    try {
+        return await fn();
+    } catch (e: any) {
+        console.error(`${name}失败:`, e);
+        return undefined;
+    }
+}
 
 async function bootstrapImpl() {
     // 尽早注册全局错误处理器（在一切初始化之前），
@@ -196,11 +225,7 @@ async function bootstrapImpl() {
     initMemoryCleanupConfig();
 
     // 安装内置音源（在插件加载之前）
-    try {
-        await setupBuiltinPlugins();
-    } catch (e) {
-        console.error("安装内置音源失败:", e);
-    }
+    await safeStep("安装内置音源", setupBuiltinPlugins);
 
     // 加载插件
     await PluginManager.setup();
@@ -208,25 +233,13 @@ async function bootstrapImpl() {
     trace("插件初始化完成");
 
     // 设置默认插件订阅（车载版专用）
-    try {
-        await setupDefaultPluginSubscribe();
-    } catch (e) {
-        console.error("设置默认插件订阅失败:", e);
-    }
+    await safeStep("设置默认插件订阅", setupDefaultPluginSubscribe);
 
     // 启动定期缓存清理
-    try {
-        cacheCleanup.initCacheCleanup();
-    } catch (e) {
-        console.error("启动缓存清理失败:", e);
-    }
+    await safeStep("启动缓存清理", () => cacheCleanup.initCacheCleanup());
 
     // 启动内存监控（每 2 分钟采样一次，更快发现内存问题）
-    try {
-        startMemoryMonitor(2 * 60 * 1000);
-    } catch (e) {
-        console.error("启动内存监控失败:", e);
-    }
+    await safeStep("启动内存监控", () => startMemoryMonitor(2 * 60 * 1000));
 
     await initTrackPlayer(logger).catch(err => {
         // 初始化播放器出错，延迟初始化
@@ -281,8 +294,6 @@ export async function initTrackPlayer(logger?: IPerfLogger) {
                 Config.getConfig("basic.maxCacheSize") ?? 100 * 1024 * 1024,
             minBuffer: 30,
             maxBuffer: 60,
-            bufferInterval: 250,
-            progressUpdateEventInterval: 2,
             autoUpdateMetadata: !disableNotification,
         });
     } catch (e: any) {
@@ -400,12 +411,15 @@ async function extraMakeup() {
         } catch { }
     }
 
-    // 开启监听
-    Linking.addEventListener("url", data => {
-        if (data.url) {
-            handleLinkingUrl(data.url);
-        }
-    });
+    // 开启监听（DEV 模式热重载去重，避免重复注册导致同一 URL 触发多次处理）
+    if (!linkingListenerRegistered) {
+        linkingListenerRegistered = true;
+        Linking.addEventListener("url", data => {
+            if (data.url) {
+                handleLinkingUrl(data.url);
+            }
+        });
+    }
     const initUrl = await Linking.getInitialURL();
     if (initUrl) {
         handleLinkingUrl(initUrl);
