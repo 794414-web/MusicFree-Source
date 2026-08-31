@@ -133,11 +133,12 @@ export default function Lyric(props: IProps) {
     }, []);
 
     useEffect(() => {
-        // 暂停且拖拽才返回
+        // 只有歌词为空或正在手动拖拽时才跳过滚动；
+        // 注意：Buffering / Ready / Paused 等状态下也要支持高亮（比如用户手动拖动进度条、
+        // 或播放器处于缓冲但 index 已变化的情况）。
         if (
             lyrics.length === 0 ||
             draggingIndex !== undefined ||
-            (draggingIndex === undefined && musicIsPaused(musicState)) ||
             lyrics[lyrics.length - 1].time < 1
         ) {
             return;
@@ -153,7 +154,6 @@ export default function Lyric(props: IProps) {
                 viewPosition: 0.5,
             });
         }
-        // 音乐暂停状态不应该影响到滑动，所以不放在依赖里，但是这样写不好。。
     }, [currentLrcItem, lyrics, draggingIndex]);
 
     useEffect(() => {

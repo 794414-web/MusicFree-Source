@@ -62,12 +62,80 @@ class LyricManager implements IInjectable {
 
     // 进度监听句柄，避免重复注册
     private progressSubscription: { remove: () => void } | null = null;
-    // 节流时间戳，限制 atom 更新频率到约 500ms 一次
-    private lastProgressUpdateTs = 0;
+    // 兜底轮询句柄：在 RNTP PlaybackProgressUpdated 不触发时仍可每秒推进
+    private progressTicker: number | null = null;
+    // 上一次 set 的 lyric 引用（用来判断是否需要写 atom）
+    private lastEmittedLyricItemRef: IParsedLrcItem | null | undefined = undefined;
+    // 节流：限制「状态栏歌词 + atom 写入」频率到约 250ms，避免每秒触发多次 UI 重渲染
+    private lastAtomWriteTs = 0;
+
+    /**
+     * 执行一次歌词行索引刷新：
+     * 仅在 index 发生变化（或首次）时才真正写 atom；
+     * 同时做 250ms 节流（相同行情况下进一步降低写入频次）。
+     */
+    private async applyPositionUpdate(position?: number) {
+        const parser = this.lyricParser;
+        if (!parser || !this.trackPlayer.isCurrentMusic(parser.musicItem)) {
+            return;
+        }
+
+        let resolvedPosition = position;
+        if (typeof resolvedPosition !== "number") {
+            try {
+                resolvedPosition = (await this.trackPlayer.getProgress()).position;
+            } catch {
+                return;
+            }
+        }
+
+        const newLyricItem = parser.getPosition(resolvedPosition);
+
+        const prev = this.lastEmittedLyricItemRef;
+        // 判定是否同一行：优先比较 index（歌词对象会不同），否则比较对象引用
+        const sameLine =
+            prev !== undefined &&
+            newLyricItem != null &&
+            prev != null &&
+            typeof prev.index === "number" &&
+            typeof newLyricItem.index === "number" &&
+            prev.index === newLyricItem.index &&
+            prev.lrc === newLyricItem.lrc;
+
+        if (sameLine) {
+            // 同一行：节流到 500ms 仅为保证「状态栏歌词长句」不需要频繁重刷；不影响 atom/index
+            const now = Date.now();
+            if (now - this.lastAtomWriteTs < 500) {
+                return;
+            }
+            this.lastAtomWriteTs = now;
+            return;
+        }
+
+        // 行已切换：立即更新（不节流），保证歌词高亮/滚动及时
+        this.lastAtomWriteTs = Date.now();
+        this.lastEmittedLyricItemRef = newLyricItem ?? null;
+
+        getDefaultStore().set(currentLyricItemAtom, newLyricItem ?? null);
+
+        const showTranslation = PersistStatus.get("lyric.showTranslation");
+        if (this.appConfig.getConfig("lyric.showStatusBarLyric")) {
+            LyricUtil.setStatusBarLyricText(
+                (newLyricItem?.lrc ?? "") +
+                (showTranslation
+                    ? `\n${newLyricItem?.translation ?? ""}`
+                    : ""),
+            );
+        }
+    }
 
     setup() {
         // 更新歌词
         this.trackPlayer.on(TrackPlayerEvents.CurrentMusicChanged, (musicItem) => {
+            // 切歌：重置上一次歌词引用/节流时间戳，避免切歌后「同一时间戳/同行」被误当成未变化
+            this.lastEmittedLyricItemRef = undefined;
+            this.lastAtomWriteTs = 0;
+
             this.refreshLyric(true, true);
 
             if (this.appConfig.getConfig("lyric.showStatusBarLyric")) {
@@ -87,41 +155,26 @@ class LyricManager implements IInjectable {
             } catch {}
             this.progressSubscription = null;
         }
+        if (this.progressTicker != null) {
+            try {
+                clearInterval(this.progressTicker);
+            } catch {}
+            this.progressTicker = null;
+        }
 
         this.progressSubscription = RNTrackPlayer.addEventListener(Event.PlaybackProgressUpdated, evt => {
-            const parser = this.lyricParser;
-            if (!parser || !this.trackPlayer.isCurrentMusic(parser.musicItem)) {
-                return;
-            }
-
-            // 节流：500ms 内不重复处理（避免每秒高频触发导致内存增长/重渲染抖动）
-            const now = Date.now();
-            if (now - this.lastProgressUpdateTs < 500) {
-                return;
-            }
-            this.lastProgressUpdateTs = now;
-
-            const currentLyricItem = getDefaultStore().get(currentLyricItemAtom);
-            const newLyricItem = parser.getPosition(evt.position);
-
-            if (currentLyricItem?.lrc !== newLyricItem?.lrc) {
-                // 更新当前歌词状态
-                getDefaultStore().set(currentLyricItemAtom, newLyricItem ?? null);
-
-                // 更新状态栏歌词
-                const showTranslation = PersistStatus.get("lyric.showTranslation");
-
-                if (this.appConfig.getConfig("lyric.showStatusBarLyric")) {
-                    LyricUtil.setStatusBarLyricText(
-                        (newLyricItem?.lrc ?? "") +
-                        (showTranslation
-                            ? `\n${newLyricItem?.translation ?? ""}`
-                            : ""),
-                    );
-                }
-            }
+            this.applyPositionUpdate(evt.position).catch(() => {});
         });
-        
+
+        // 兜底：每秒主动拉一次播放器进度。
+        // 兼容以下情况：
+        // 1) 某些 RNTP/KotlinAudio 版本或设备不按 progressUpdateEventInterval=1 触发
+        // 2) 缓冲/seek 后事件丢失
+        // 3) 用户使用第三方音频插件（如 GD）自行注入时事件流不稳定
+        this.progressTicker = setInterval(() => {
+            this.applyPositionUpdate().catch(() => {});
+        }, 1000) as unknown as number;
+
         if (this.appConfig.getConfig("lyric.showStatusBarLyric")) {
             const statusBarLyricConfig = {
                 topPercent: this.appConfig.getConfig("lyric.topPercent"),
@@ -150,6 +203,12 @@ class LyricManager implements IInjectable {
                 this.progressSubscription.remove();
             } catch {}
             this.progressSubscription = null;
+        }
+        if (this.progressTicker != null) {
+            try {
+                clearInterval(this.progressTicker);
+            } catch {}
+            this.progressTicker = null;
         }
     }
 
@@ -477,6 +536,9 @@ class LyricManager implements IInjectable {
             });
 
             const currentLyric = ignoreProgress ? (this.lyricParser.getLyricItems()?.[0] ?? null) : this.lyricParser.getPosition((await this.trackPlayer.getProgress()).position);
+            // 切歌/换歌词后：立即同步「最后一次已发出的行引用」，避免被判定为同一行而跳过
+            this.lastEmittedLyricItemRef = currentLyric ?? null;
+            this.lastAtomWriteTs = Date.now();
             getDefaultStore().set(currentLyricItemAtom, currentLyric || null);
 
             if (this.appConfig.getConfig("lyric.showStatusBarLyric")) {
