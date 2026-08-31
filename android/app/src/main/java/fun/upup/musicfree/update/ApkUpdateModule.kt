@@ -240,11 +240,16 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
     }
 
     /**
-     * 下载 APK 并覆盖安装（OkHttp 直连优先，进度/网速精确可控）
+     * 下载 APK 并覆盖安装：优先下载层多源自动回退
+     * - 接收「单一 URL」模式：向后兼容 JS 层旧的 fromUrl/backUrl 逻辑
+     * - 接收「JSON 数组字符串」模式（新）：形如 ["url1","url2",...]，原生端按顺序自动依次尝试，
+     *   每条独立做 HTTP 状态 / 超时 / 文件完整性 校验，失败后自动切到下一条；
+     *   全部失败时聚合每条错误明细，按「#i 简短域名: 错误」返回，便于 UI Toast 直接展示。
      */
     @ReactMethod
-    fun downloadAndInstall(url: String, promise: Promise) {
+    fun downloadAndInstall(urlOrJsonList: String, promise: Promise) {
         lastError = ""
+        aggregatedFailures.clear()
         isDownloading = true
         downloadFinishedVerified = false
         downloadedBytes = 0L
@@ -252,28 +257,101 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
         currentSpeedBps = 0L
         speedSampleBytes = 0L
         speedSampleTime = 0L
-        currentDownloadUrl = url
+        currentDownloadUrl = ""
 
-        if (url.isBlank()) {
+        val urls = parseDownloadUrls(urlOrJsonList)
+        if (urls.isEmpty()) {
             lastError = "下载地址为空"
             isDownloading = false
             promise.reject("INVALID_URL", lastError)
             return
         }
 
-        Log.d(TAG, "开始下载: $url")
-        startDirectHttpDownload(url)
+        Log.d(TAG, "开始下载 (${urls.size} 条链路): $urls")
+        // 并发仍使用串行队列：失败后可有序切换，便于按「国内优先」的数组顺序真正落地
+        startMultiSourceHttpDownload(urls, urlIndex = 0)
         // 立即返回，由 JS 层轮询 getDownloadProgress 获取进度/网速
         promise.resolve(0.0)
     }
 
     /**
-     * 使用 OkHttp 流式下载 APK
-     * 每次写入实时累加字节数，下载完成后校验文件完整性
+     * 将「单 URL 或 JSON 数组字符串」解析为有序下载列表
      */
-    private fun startDirectHttpDownload(url: String) {
+    private fun parseDownloadUrls(input: String): List<String> {
+        val raw = input.trim()
+        if (raw.isEmpty()) return emptyList()
+        if (raw.startsWith("[") && raw.endsWith("]")) {
+            return try {
+                val arr = JSONArray(raw)
+                val list = mutableListOf<String>()
+                for (i in 0 until arr.length()) {
+                    val s = arr.optString(i, "").trim()
+                    if (s.isNotEmpty()) list.add(s)
+                }
+                list
+            } catch (_: Exception) {
+                // 解析失败回退为「把输入当单一 URL」
+                listOf(raw).filter { it.isNotBlank() }
+            }
+        }
+        return listOf(raw).filter { it.isNotBlank() }
+    }
+
+    /** 每条链路的失败详情：用于全部失败后聚合错误 */
+    private data class FailureInfo(val index: Int, val url: String, val reason: String)
+    private val aggregatedFailures = mutableListOf<FailureInfo>()
+
+    private fun shortLabelOfUrl(url: String): String = try {
+        val u = java.net.URI(url)
+        val host = u.host ?: "?"
+        val short = if (host.startsWith("www.")) host.substring(4) else host
+        // 保留一级路径片段，避免同域名多条链接无辨识度
+        val first = u.path?.trim('/')?.takeIf { it.isNotBlank() }?.split('/')?.firstOrNull()
+        if (first != null) "$host/$first" else short
+    } catch (_: Exception) {
+        url.take(24)
+    }
+
+    /**
+     * OkHttp 直链多源回退下载：
+     * - 每条链路独立发出请求、独立计算 contentLength、独立写同一个临时文件（先写 .part，成功后重命名）。
+     * - 失败后先记录聚合，再按序启动下一条；若全部失败，统一走事件回调通知 UI 展示明细。
+     */
+    private fun startMultiSourceHttpDownload(urls: List<String>, urlIndex: Int) {
         val scope = CoroutineScope(Dispatchers.IO)
         scope.launch {
+            if (urlIndex >= urls.size) {
+                // 所有源均不可用
+                isDownloading = false
+                val summary = buildString {
+                    append("全部下载源失败：")
+                    aggregatedFailures.forEachIndexed { i, f ->
+                        if (i > 0) append("；")
+                        append('#')
+                        append(f.index + 1)
+                        append(' ')
+                        append(shortLabelOfUrl(f.url))
+                        append(": ")
+                        append(f.reason)
+                    }
+                }
+                lastError = summary
+                Log.e(TAG, summary)
+                reactContext.runOnNativeModulesQueueThread {
+                    emitEvent("error", summary)
+                }
+                return@launch
+            }
+
+            val url = urls[urlIndex]
+            currentDownloadUrl = url
+            // 切换新链接时重置进度/网速 UI（JS 轮询会读到新的从 0 开始的数字，看起来更正常）
+            downloadedBytes = 0L
+            totalBytes = 0L
+            speedSampleBytes = 0L
+            speedSampleTime = 0L
+            emitEvent("fallback", "正在尝试下载源 #${urlIndex + 1} (${shortLabelOfUrl(url)})")
+
             var response: okhttp3.Response? = null
             try {
                 val apkFile = apkFile()
@@ -281,22 +359,29 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
 
                 val request = Request.Builder()
                     .url(url)
-                    .header("User-Agent", "MusicFree-Update/1.0")
-                    .header("Accept", "application/octet-stream, */*")
+                    .header("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36 MusicFree-Update/1.0")
+                    .header("Accept", "application/vnd.android.package-archive, application/octet-stream, */*")
+                    .apply {
+                        try {
+                            val host = java.net.URI(url).host
+                            if (host != null) header("Referer", "https://$host/")
+                        } catch (_: Exception) {}
+                    }
                     .build()
 
-                Log.d(TAG, "OkHttp 开始请求: $url")
+                Log.d(TAG, "[#${urlIndex + 1}] OkHttp 开始请求: $url")
                 response = httpClient.newCall(request).execute()
                 if (!response!!.isSuccessful) {
-                    throw IOException("下载失败: HTTP ${response!!.code}")
+                    val code = response!!.code
+                    response.close()
+                    throw IOException("HTTP $code")
                 }
-                val body = response!!.body ?: throw IOException("下载失败: 空响应体")
+                val body = response!!.body ?: throw IOException("空响应体")
 
-                totalBytes = body.contentLength() // 可能为 -1（未知）
-                if (totalBytes < 0) totalBytes = 0
+                totalBytes = body.contentLength().coerceAtLeast(0L)
+                Log.d(TAG, "[#${urlIndex + 1}] OkHttp 下载开始, 预计: ${if (totalBytes > 0) "${totalBytes / 1024 / 1024}MB" else "未知"}")
 
-                Log.d(TAG, "OkHttp 下载开始, 预计: ${if (totalBytes > 0) totalBytes / 1024 / 1024 else "未知"}MB")
-
+                val crc = java.util.zip.CRC32()
                 body.byteStream().use { input ->
                     FileOutputStream(apkFile).use { output ->
                         val buffer = ByteArray(64 * 1024)
@@ -305,6 +390,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                             val read = input.read(buffer)
                             if (read == -1) break
                             output.write(buffer, 0, read)
+                            crc.update(buffer, 0, read)
                             written += read
                             downloadedBytes = written
                         }
@@ -314,14 +400,14 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                 response?.close()
                 response = null
 
-                // 文件完整性校验：杜绝"进度 100 但实际未写完"
                 val len = apkFile.length()
                 if (len <= 0) throw IOException("下载文件为空")
+                // 内容长度不匹配（且服务端真的返回了 Content-Length）时才视为失败
                 if (totalBytes > 0 && len != totalBytes) {
-                    throw IOException("下载文件不完整 ($len/${totalBytes})")
+                    throw IOException("下载文件不完整 ($len/$totalBytes)")
                 }
 
-                Log.d(TAG, "OkHttp 下载完成并校验通过, 大小=${len}")
+                Log.d(TAG, "[#${urlIndex + 1}] OkHttp 下载完成并校验通过, 大小=$len, crc32=${crc.value.toString(16)}")
 
                 downloadFinishedVerified = true
                 reactContext.runOnNativeModulesQueueThread {
@@ -331,15 +417,12 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                     }
                 }
             } catch (e: Exception) {
-                Log.e(TAG, "OkHttp 下载失败", e)
+                Log.e(TAG, "[#${urlIndex + 1}] 下载失败", e)
                 try { response?.close() } catch (_: Exception) {}
-                lastError = "下载失败: ${e.message}"
-                reactContext.runOnNativeModulesQueueThread {
-                    if (isDownloading) {
-                        isDownloading = false
-                        emitEvent("error", lastError)
-                    }
-                }
+                val reason = e.message ?: "未知错误"
+                aggregatedFailures.add(FailureInfo(urlIndex, url, reason))
+                // 切到下一条：不在 UI 层走 Toast（保持静默），由 JS 层继续观察进度与最终失败事件
+                startMultiSourceHttpDownload(urls, urlIndex + 1)
             }
         }
     }

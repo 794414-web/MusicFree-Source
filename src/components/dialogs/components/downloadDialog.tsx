@@ -17,11 +17,18 @@ import { sizeFormatter } from "@/utils/fileUtils";
 interface IDownloadDialogProps {
     version: string;
     content: string[];
+    /** 新增：2.0.9 起透传完整 download[] 数组，原生端支持按顺序自动回退 */
+    downloadUrls?: string[];
     fromUrl: string;
     backUrl?: string;
 }
 export default function DownloadDialog(props: IDownloadDialogProps) {
-    const { content, fromUrl, backUrl, version } = props;
+    const { content, fromUrl, backUrl, version, downloadUrls = [] } = props;
+    // 最终传给原生端的有序链接列表：downloadUrls 优先，否则回退到 fromUrl+backUrl
+    const effectiveUrls = Array.isArray(downloadUrls) && downloadUrls.length > 0
+        ? downloadUrls
+        : [fromUrl, backUrl].filter((u): u is string => !!u);
+    const firstUrl = effectiveUrls[0] ?? fromUrl;
     const [skipState, setSkipState] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -63,27 +70,25 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                 setDownloading(false);
                 clearTimer();
                 hideDialog();
+            } else if (event.type === "fallback") {
+                // 静默：原生正在自动切换链路，这里只 Toast 提示让用户看到切换过程
+                Toast.warn(event.message || "正在切换下载源...");
             } else if (event.type === "error") {
                 setDownloading(false);
                 clearTimer();
-                // 主链接失败，自动尝试备用链接
-                if (!isBackupRef.current && backUrl) {
-                    Toast.warn("下载失败，正在尝试备用链接...");
-                    setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
-                } else {
-                    Toast.warn("更新失败: " + event.message);
-                }
+                // 2.0.9 起原生端已经按 download[] 顺序自动回退到过了，这里只负责最终失败展示
+                Toast.warn("更新失败: " + event.message);
             }
         });
         return unsubscribe;
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [backUrl]);
+    }, []);
 
     // 备用链接重入标记
     const isBackupRef = useRef(false);
 
-    /** 直接下载并安装 */
-    const handleDownloadAndInstall = async (url: string, isBackup = false) => {
+    /** 直接下载并安装：把 3+ 条候选链接以 JSON 数组传给原生，原生按顺序自动回退 */
+    const handleDownloadAndInstall = async (urls: string | string[], isBackup = false) => {
         if (downloading) return;
         isBackupRef.current = isBackup;
         setDownloading(true);
@@ -94,49 +99,45 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
         PersistStatus.set("app.skipVersion", undefined);
         clearTimer();
 
-        const tryBackup = (msg: string) => {
-            if (!isBackup && backUrl) {
-                Toast.warn(msg);
-                setTimeout(() => handleDownloadAndInstall(backUrl, true), 500);
-            } else {
-                Toast.warn(msg);
+        const normalizeInput = (): string => {
+            if (Array.isArray(urls)) {
+                return JSON.stringify(urls.filter(u => typeof u === "string" && u.length > 0));
             }
+            return urls;
         };
 
         try {
             if (!ApkUpdateModule.isSupported()) {
                 setDownloading(false);
-                openUrl(url);
-                Clipboard.setString(url);
+                const primary = Array.isArray(urls) ? urls[0] : urls;
+                openUrl(primary);
+                Clipboard.setString(primary);
                 return;
             }
 
-            await ApkUpdateModule.downloadAndInstall(url);
+            await ApkUpdateModule.downloadAndInstall(normalizeInput());
 
             let stalledCount = 0;
             let lastDownloaded = -1;
             let failedReported = false;
+            // 把「链路切换」也计入总超时：给每条链路留 2 分钟最低窗口，总体 6 分钟上限
             const startTime = Date.now();
-            const TOTAL_TIMEOUT_MS = 180_000;
+            const TOTAL_TIMEOUT_MS = Math.max(360_000, effectiveUrls.length * 120_000);
 
             timerRef.current = setInterval(async () => {
                 try {
                     const result = await ApkUpdateModule.getDownloadProgress();
                     const p = result?.progress ?? -1;
 
-                    // 下载失败：返回 -1 且非备用，自动切换备用链接
+                    // 下载完成（进度 100 且文件校验通过），等待安装事件
+                    if (p >= 100) {
+                        clearTimer();
+                        return;
+                    }
+
+                    // 下载失败/空闲：progress === -1 时交由 error 事件通知最终失败
+                    // （native 内部已回退下一条）不要在这里再次切链路
                     if (p === -1) {
-                        if (!failedReported) {
-                            failedReported = true;
-                            setDownloading(false);
-                            clearTimer();
-                            const err = await ApkUpdateModule.getLastError();
-                            if (!isBackup && backUrl) {
-                                tryBackup("下载失败，正在尝试备用链接...");
-                            } else {
-                                Toast.warn("下载失败: " + (err || "未知错误"));
-                            }
-                        }
                         return;
                     }
 
@@ -146,28 +147,29 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                     setDownloadedBytes(result?.downloadedBytes ?? 0);
                     setTotalBytes(result?.totalBytes ?? 0);
 
-                    // 下载完成（进度 100 且文件校验通过），等待安装事件
-                    if (p >= 100) {
-                        clearTimer();
-                        return;
-                    }
-
                     // 总超时检测
                     if (Date.now() - startTime > TOTAL_TIMEOUT_MS) {
-                        setDownloading(false);
-                        clearTimer();
-                        tryBackup("下载超时，正在尝试备用链接...");
+                        if (!failedReported) {
+                            failedReported = true;
+                            setDownloading(false);
+                            clearTimer();
+                            Toast.warn("下载超时：所有链路在限定时间内均未完成");
+                        }
                         return;
                     }
 
-                    // 停滞检测：以字节数为基准，60 秒无增长则认为卡住
+                    // 停滞检测：以字节数为基准，120 秒无增长才判定卡住（国内代理不稳定，给足缓冲）
                     const dl = result?.downloadedBytes ?? 0;
                     if (dl === lastDownloaded) {
                         stalledCount++;
-                        if (stalledCount >= 60) {
-                            setDownloading(false);
-                            clearTimer();
-                            tryBackup("下载卡住，正在切换备用链接...");
+                        if (stalledCount >= 120) {
+                            if (!failedReported) {
+                                failedReported = true;
+                                setDownloading(false);
+                                clearTimer();
+                                Toast.warn("下载卡住超过 2 分钟，已停止。可稍后重试");
+                            }
+                            return;
                         }
                     } else {
                         stalledCount = 0;
@@ -178,7 +180,7 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
         } catch (e: any) {
             setDownloading(false);
             clearTimer();
-            tryBackup("下载启动失败: " + (e?.message || "未知错误"));
+            Toast.warn("下载启动失败: " + (e?.message || "未知错误"));
         }
     };
 
@@ -254,7 +256,7 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                     <TouchableOpacity
                         style={style.button}
                         activeOpacity={0.6}
-                        onPress={() => handleDownloadAndInstall(fromUrl)}>
+                        onPress={() => handleDownloadAndInstall(effectiveUrls)}>
                         <ThemeText style={style.buttonText}>
                             {downloading ? "下载中" : "立即更新"}
                         </ThemeText>
@@ -265,8 +267,10 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                             activeOpacity={0.6}
                             onPress={async () => {
                                 PersistStatus.set("app.skipVersion", undefined);
-                                openUrl(backUrl);
-                                Clipboard.setString(backUrl);
+                                // 2.0.9 起如果有完整链接列表，优先兜底打开「最后一条」（通常是 GitHub 源站或 jsdelivr）
+                                const fallbackUrl = (downloadUrls?.length && downloadUrls[downloadUrls.length - 1]) || backUrl;
+                                openUrl(fallbackUrl);
+                                Clipboard.setString(fallbackUrl);
                             }}>
                             <ThemeText style={style.buttonText}>
                                 {t("dialog.downloadDialog.backupUrl")}

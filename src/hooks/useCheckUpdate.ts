@@ -32,6 +32,10 @@ export const checkUpdateAndShowResult = (
             showDialog("DownloadDialog", {
                 version: data.version,
                 content: data.changeLog,
+                // 2026-09 v2.0.9 起原生端支持「按 download[] 顺序自动回退」，
+                // 这里直接透传全部候选链接（按国内可达优先排序在 release/version.json）
+                downloadUrls: data.download ?? [],
+                // 兼容 props 保留：
                 fromUrl: data.download[0],
                 backUrl: data.download[1],
             });
