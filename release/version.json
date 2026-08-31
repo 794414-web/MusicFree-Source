@@ -1,17 +1,17 @@
 {
-  "version": "2.0.6",
+  "version": "2.0.7",
   "changeLog": [
-    "## v2.0.6 修复编译错误与稳定性优化",
+    "## v2.0.7 GD 音乐台优先 + 歌词匹配准确率修复",
     "",
-    "- 修复：apiController 搜索接口 IMusicItemBase 与 IMusicItem 类型不匹配导致的 TS 编译错误（远程控制搜索播放功能正常化）",
-    "- 修复：bootstrap 播放器初始化传入 bufferInterval / progressUpdateEventInterval 无效属性导致的编译失败",
-    "- 修复：歌词详情页 IconButtonWithGesture 组件不存在导致的导入错误（恢复为标准 IconButton）",
-    "- 修复：基本设置 RadioDialog 返回 string|number 类型传 Config.setConfig 导致的 4 个 TS 错误（清理阈值/定时清理间隔数值化）",
-    "- 修复：远程控制设置 wsUrl 可能 undefined、fontSize=\"small\" 非法值的 2 个 TS 错误",
-    "- 优化：重构完成后整体 TS 类型检查 0 error 通过；Android assembleRelease BUILD SUCCESSFUL"
+    "- 修复：歌词偶尔不符合问题（lyricManager 刷新歌词时强制优先 GD 源：GD-tagged 直接 GD.getLyric，否则 GD search+getLyric 重新按歌名+歌手搜索后取歌词；GD 搜不到才回退原平台插件的 getLyric）",
+    "- 修复：searchSimilarLyric 歌词兜底搜索插件顺序改为 GD 置顶，并用归一化后的标题+歌手双重判定避免同名翻唱错版（支持繁简、括号内容、全半角空格、全角标点、Live/Acoustic 版本）",
+    "- 修复：只有关闭其他插件才会使用 GD 播放的问题（pluginManager 6 个插件列表接口 getSearchablePlugins / getSorted* / getEnabledPlugins / getPluginsWithAbility 都强制把 GD 音乐台置顶，搜索/换源/歌词/展示均全局生效）",
+    "- 修复：GD 播放源偶尔挑到 Live/翻唱版本的问题（trackPlayer 在 tryGetGDMediaSource、getGDMediaSourceForItem、getSimilarMusic 三处都加入归一化匹配 pickBestGDMatch，不再盲取 list[0]）",
+    "- 修复：从其他平台导入的歌曲走 GD 播放后封面等元数据仍然缺失的问题（getMusicInfo 优先用 GD 版本补全 playItem）",
+    "- 性能优化：GD 搜索结果仍然保留 10 分钟本地缓存，避免频繁搜索触发 GD 接口频率限制"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.0.6/MusicFree-2.0.6-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.6/MusicFree-2.0.6-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.0.7/MusicFree-2.0.7-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.7/MusicFree-2.0.7-universal.apk"
   ]
 }

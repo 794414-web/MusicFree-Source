@@ -478,9 +478,24 @@ class PluginManager implements IPluginManager, IInjectable {
      * @returns 已启用的插件实例数组
      */
     getEnabledPlugins() {
-        return this.getPlugins().filter(it =>
-            pluginMeta.isPluginEnabled(it.name),
-        );
+        // GD 音乐台强制置顶：启用列表也以 GD 优先展示，便于用户感知和后续 getEnabledPlugins 调用方优先走 GD
+        return this.getPlugins()
+            .filter(it => pluginMeta.isPluginEnabled(it.name))
+            .sort((a, b) => {
+                const aIsGD = a.name === "GD音乐台" ? 0 : 1;
+                const bIsGD = b.name === "GD音乐台" ? 0 : 1;
+                return aIsGD - bIsGD;
+            });
+    }
+
+    // 把 GD 音乐台视为「总是排在最前」：先按是否为 GD 粗粒度分桶，再按用户自定义 order 细排
+    private comparePluginOrderByName(aName: string, bName: string, order: Record<string, number>): number {
+        const aIsGD = aName === "GD音乐台" ? 0 : 1;
+        const bIsGD = bName === "GD音乐台" ? 0 : 1;
+        if (aIsGD !== bIsGD) return aIsGD - bIsGD;
+        const ao = order[aName] ?? Infinity;
+        const bo = order[bName] ?? Infinity;
+        return ao - bo < 0 ? -1 : 1;
     }
 
     /**
@@ -490,28 +505,34 @@ class PluginManager implements IPluginManager, IInjectable {
     getSortedPlugins() {
         const order = pluginMeta.getPluginOrder();
         return [...this.getPlugins()].sort((a, b) =>
-            (order[a.name] ?? Infinity) - (order[b.name] ?? Infinity) < 0
-                ? -1
-                : 1,
+            this.comparePluginOrderByName(a.name, b.name, order),
         );
     }
 
     /**
      * 获取所有支持搜索功能的已启用插件
      * 注意：这里不过滤 Error 状态的插件，以便音源 tab 仍然可以显示
-     * 实际搜索时会在 useSearch.ts 中跳过 Error 状态的插件
+     * 实际搜索时会在 useSearch.ts 中跳过 Error 状态的插件；
+     * 返回结果也按「GD 音乐台优先」排序，这样即便用户没把 GD 排第一，
+     * 搜索/换源等逻辑也会自动优先使用 GD，不需要用户手动关闭其他插件。
      */
     getSearchablePlugins(supportedSearchType?: ICommon.SupportMediaType) {
-        return this.getPlugins().filter(
-            it =>
-                pluginMeta.isPluginEnabled(it.name) &&
-                it.supportedMethods.has("search") &&
-                (supportedSearchType && it.instance.supportedSearchType
-                    ? it.instance.supportedSearchType.includes(
-                        supportedSearchType,
-                    )
-                    : true),
-        );
+        return this.getPlugins()
+            .filter(
+                it =>
+                    pluginMeta.isPluginEnabled(it.name) &&
+                    it.supportedMethods.has("search") &&
+                    (supportedSearchType && it.instance.supportedSearchType
+                        ? it.instance.supportedSearchType.includes(
+                            supportedSearchType,
+                        )
+                        : true),
+            )
+            .sort((a, b) => {
+                const aIsGD = a.name === "GD音乐台" ? 0 : 1;
+                const bIsGD = b.name === "GD音乐台" ? 0 : 1;
+                return aIsGD - bIsGD;
+            });
     }
 
     /**
@@ -522,23 +543,26 @@ class PluginManager implements IPluginManager, IInjectable {
     getSortedSearchablePlugins(supportedSearchType?: ICommon.SupportMediaType) {
         const order = pluginMeta.getPluginOrder();
         return [...this.getSearchablePlugins(supportedSearchType)].sort(
-            (a, b) =>
-                (order[a.name] ?? Infinity) - (order[b.name] ?? Infinity) < 0
-                    ? -1
-                    : 1,
+            (a, b) => this.comparePluginOrderByName(a.name, b.name, order),
         );
     }
 
     /**
      * 获取所有实现特定功能的已启用插件
-     * 注意：不过滤 Error 状态，避免隐藏可用的音源
+     * 注意：不过滤 Error 状态，避免隐藏可用的音源；结果同样按 GD 优先排序。
      */
     getPluginsWithAbility(ability: keyof IPlugin.IPluginInstanceMethods) {
-        return this.getPlugins().filter(
-            it =>
-                pluginMeta.isPluginEnabled(it.name) &&
-                it.supportedMethods.has(ability),
-        );
+        return this.getPlugins()
+            .filter(
+                it =>
+                    pluginMeta.isPluginEnabled(it.name) &&
+                    it.supportedMethods.has(ability),
+            )
+            .sort((a, b) => {
+                const aIsGD = a.name === "GD音乐台" ? 0 : 1;
+                const bIsGD = b.name === "GD音乐台" ? 0 : 1;
+                return aIsGD - bIsGD;
+            });
     }
 
     /**
@@ -549,9 +573,7 @@ class PluginManager implements IPluginManager, IInjectable {
     getSortedPluginsWithAbility(ability: keyof IPlugin.IPluginInstanceMethods) {
         const order = pluginMeta.getPluginOrder();
         return [...this.getPluginsWithAbility(ability)].sort((a, b) =>
-            (order[a.name] ?? Infinity) - (order[b.name] ?? Infinity) < 0
-                ? -1
-                : 1,
+            this.comparePluginOrderByName(a.name, b.name, order),
         );
     }
 

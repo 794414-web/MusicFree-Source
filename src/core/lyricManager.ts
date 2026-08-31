@@ -277,6 +277,92 @@ class LyricManager implements IInjectable {
         }
     }
 
+    // ================= GD 歌词优先与歌词匹配校验 =================
+    private static TRAD_TO_SIMPLE: Record<string, string> = {"倫":"伦","傑":"杰","葉":"叶","黃":"黄","陳":"陈","張":"张","劉":"刘","楊":"杨","吳":"吴","鄭":"郑","馬":"马","謝":"谢","蘇":"苏","許":"许","趙":"赵","錢":"钱","孫":"孙","萬":"万","軍":"军","國":"国","華":"华","漢":"汉","愛":"爱","會":"会","還":"还","這":"这","個":"个","們":"们","來":"来","為":"为","麼":"么","說":"说","時":"时","間":"间","點":"点","龍":"龙","鳳":"凤","夢":"梦","獨":"独","潔":"洁","純":"纯","靜":"静","樂":"乐","館":"馆","觀":"观","歡":"欢","發":"发","長":"长","門":"门","問":"问","開":"开","關":"关","對":"对","錯":"错","過":"过","遠":"远","邊":"边","讓":"让","請":"请","詩":"诗","詞":"词","語":"语","話":"话","讀":"读","寫":"写","學":"学","習":"习","書":"书","畫":"画","紙":"纸","筆":"笔","電":"电","腦":"脑","機":"机","車":"车","輪":"轮","飛":"飞","風":"风","雲":"云","興":"兴","東":"东","頭":"头","兒":"儿","轉":"转","歷":"历","單":"单","雙":"双","聲":"声","聽":"听","歸":"归","舊":"旧","廣":"广","園":"园","燈":"灯","號":"号","線":"线","紅":"红","綠":"绿","藍":"蓝","銀":"银","鋼":"钢","錄":"录","簡":"简","編":"编","維":"维","結":"结","網":"网","組":"组","總":"总","經":"经","絕":"绝","續":"续","繼":"继","約":"约","級":"级","紀":"纪","繞":"绕","緣":"缘","縮":"缩","議":"议","譯":"译","護":"护","買":"买","賣":"卖","贊":"赞","貝":"贝","貴":"贵","賓":"宾","賬":"账","贈":"赠","質":"质","賭":"赌","贏":"赢","賢":"贤","賴":"赖","躍":"跃","認":"认","誤":"误","誘":"诱","謊":"谎","謙":"谦","證":"证","譚":"谭","譜":"谱","響":"响","項":"项","順":"顺","須":"须","預":"预","頑":"顽","顧":"顾","顫":"颤","顯":"显","驗":"验","驚":"惊","騙":"骗","體":"体","髮":"发","鬍":"胡","魚":"鱼","魯":"鲁","鯊":"鲨","鯨":"鲸","鳥":"鸟","鴨":"鸭","鶯":"莺","鶴":"鹤","麥":"麦","麻":"麻","黑":"黑","齊":"齐","齒":"齿","齣":"出","龜":"龟","鼓":"鼓","臺":"台","颱":"台","鵬":"鹏","鷹":"鹰","麗":"丽","麋":"麋"};
+
+    private static normalizeText(str: string | undefined | null): string {
+        const s = String(str ?? "");
+        let out = "";
+        for (let i = 0; i < s.length; i++) {
+            const ch = s.charAt(i);
+            out += LyricManager.TRAD_TO_SIMPLE[ch] || ch;
+        }
+        return out
+            .toLowerCase()
+            .replace(/[\s\u3000]/g, "")
+            .replace(/[（(\【\[][\s\S]*?[）)\】\]]/g, "")
+            .replace(/[，。、；：！？!?·,'"“”‘’\-—~：]/g, "");
+    }
+
+    /**
+     * 归一化后的「标题相同 + 歌手有交集」双重判定，避免同名但不同歌手/版本的歌词错版。
+     */
+    private static isSameSongLyric(
+        a: { title?: string; artist?: string } | undefined | null,
+        b: { title?: string; artist?: string } | undefined | null,
+    ): boolean {
+        if (!a || !b) return false;
+        const tA = LyricManager.normalizeText(a.title);
+        const tB = LyricManager.normalizeText(b.title);
+        if (!tA || tA !== tB) return false;
+        const arA = LyricManager.normalizeText(a.artist);
+        const arB = LyricManager.normalizeText(b.artist);
+        if (!arA || !arB) return true;
+        return arA.includes(arB) || arB.includes(arA);
+    }
+
+    /**
+     * 获取 GD 音乐台插件（如果存在并支持 getLyric）。
+     */
+    private getGDLyricPlugin(): Plugin | null {
+        try {
+            const p = this.pluginManager.getByName("GD音乐台");
+            if (p && p.methods && typeof (p.methods as any).getLyric === "function") {
+                return p as Plugin;
+            }
+        } catch {
+            /* ignore */
+        }
+        return null;
+    }
+
+    /**
+     * 通过 GD 插件按「歌名 + 歌手」重新搜索，命中与当前歌相同的条目后，再用 GD 取歌词。
+     * 用于：非 GD 平台导入的歌曲 / 原 getLyric 返回错版歌词 / 当前 item 缺少 _gdId。
+     */
+    private async getLyricFromGD(musicItem: IMusic.IMusicItem): Promise<ILyric.ILyricSource | null> {
+        const gdPlugin = this.getGDLyricPlugin();
+        const searchFn = (gdPlugin?.methods as any)?.search;
+        const getLyricFn = (gdPlugin?.methods as any)?.getLyric;
+        if (!gdPlugin || typeof searchFn !== "function" || typeof getLyricFn !== "function") {
+            return null;
+        }
+        const keyword = `${musicItem.title ?? ""} ${musicItem.artist ?? ""}`.trim();
+        if (!keyword) return null;
+        let searchResult: any = null;
+        try {
+            searchResult = await searchFn(keyword, 1, "music");
+        } catch {
+            return null;
+        }
+        const list: Array<{ title?: string; artist?: string; [k: string]: any }> =
+            (searchResult && Array.isArray(searchResult.data)) ? searchResult.data : [];
+        if (!list.length) return null;
+        for (const candidate of list) {
+            if (!LyricManager.isSameSongLyric(candidate, musicItem)) continue;
+            let lyric: ILyric.ILyricSource | null = null;
+            try {
+                lyric = (await getLyricFn(candidate)) ?? null;
+            } catch {
+                lyric = null;
+            }
+            if (lyric && (lyric as any).rawLrc && typeof (lyric as any).rawLrc === "string" && !(lyric as any).rawLrc.includes("暂无歌词")) {
+                return lyric;
+            }
+        }
+        return null;
+    }
+
     private async refreshLyric(skipFetchLyricSourceIfSame: boolean = true, ignoreProgress: boolean = false) {
         const currentMusicItem = this.trackPlayer.currentMusic;
 
@@ -295,7 +381,48 @@ class LyricManager implements IInjectable {
                 // 重置歌词状态
                 this.setLyricAsLoadingState();
 
-                lrcSource = (await this.pluginManager.getByMedia(currentMusicItem)?.methods?.getLyric(currentMusicItem)) ?? null;
+                // GD 歌词优先：
+                //   - platform==GD音乐台 或 item 带 _gdId/_gdLyricId → 直接用 GD getLyric
+                //     失败时退回到 GD search+getLyric 兜底；
+                //   - 其他平台（导入歌单的歌曲）→ 一律先走 GD search+getLyric，
+                //     再失败才回退导入平台插件的 getLyric。
+                const hasGDTags: boolean =
+                    currentMusicItem.platform === "GD音乐台" ||
+                    Boolean((currentMusicItem as any)._gdId || (currentMusicItem as any)._gdLyricId);
+
+                if (hasGDTags) {
+                    const gdPlugin = this.getGDLyricPlugin();
+                    if (gdPlugin) {
+                        try {
+                            const gdLyric = await (gdPlugin.methods as any).getLyric(currentMusicItem);
+                            if (gdLyric && gdLyric.rawLrc && !gdLyric.rawLrc.includes("暂无歌词")) {
+                                lrcSource = gdLyric;
+                            } else {
+                                lrcSource = await this.getLyricFromGD(currentMusicItem);
+                            }
+                        } catch {
+                            lrcSource = await this.getLyricFromGD(currentMusicItem);
+                        }
+                    } else {
+                        lrcSource = null;
+                    }
+                } else {
+                    lrcSource = await this.getLyricFromGD(currentMusicItem);
+                }
+
+                if (!lrcSource) {
+                    const rawPlugin = this.pluginManager.getByMedia(currentMusicItem);
+                    if (rawPlugin?.methods && typeof (rawPlugin.methods as any).getLyric === "function") {
+                        try {
+                            const rawLyric = (await (rawPlugin.methods as any).getLyric(currentMusicItem)) ?? null;
+                            if (rawLyric && rawLyric.rawLrc && !rawLyric.rawLrc.includes("暂无歌词")) {
+                                lrcSource = rawLyric;
+                            }
+                        } catch {
+                            lrcSource = null;
+                        }
+                    }
+                }
             }
 
             // 切换到其他歌曲了, 直接返回
@@ -380,7 +507,13 @@ class LyricManager implements IInjectable {
      */
     private async searchSimilarLyric(musicItem: IMusic.IMusicItem) {
         const keyword = musicItem.alias || musicItem.title;
-        const plugins = this.pluginManager.getSearchablePlugins("lyric");
+        // 歌词相似搜索也强制 GD 优先：把 GD 插件置顶，其他插件顺序不变。
+        const allPlugins = this.pluginManager.getSearchablePlugins("lyric");
+        const plugins = [...allPlugins].sort((a, b) => {
+            const aIsGD = a.name === "GD音乐台" ? 0 : 1;
+            const bIsGD = b.name === "GD音乐台" ? 0 : 1;
+            return aIsGD - bIsGD;
+        });
 
         let distance = Infinity;
         let minDistanceMusicItem;
@@ -407,18 +540,20 @@ class LyricManager implements IInjectable {
             const firstTwo = results?.data?.slice(0, 2) || [];
 
             for (let item of firstTwo) {
-                if (
-                    item.title === keyword &&
-                    item.artist === musicItem.artist
-                ) {
+                // 使用归一化后的「标题+歌手」双重判断，避免括号/繁简/空格差异造成的误选
+                if (LyricManager.isSameSongLyric(item, musicItem)) {
                     distance = 0;
                     minDistanceMusicItem = item;
                     targetPlugin = plugin;
                     break;
                 } else {
+                    const normKeyword = LyricManager.normalizeText(keyword);
+                    const normTitle = LyricManager.normalizeText(item.title);
+                    const normItemArtist = LyricManager.normalizeText(item.artist);
+                    const normArtist = LyricManager.normalizeText(musicItem.artist);
                     const dist =
-                        minDistance(keyword, musicItem.title) +
-                        minDistance(item.artist, musicItem.artist);
+                        minDistance(normKeyword, normTitle) +
+                        minDistance(normItemArtist, normArtist);
                     if (dist < distance) {
                         distance = dist;
                         minDistanceMusicItem = item;
