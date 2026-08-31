@@ -58,13 +58,18 @@ react {
     autolinkLibrariesWithApp()
 
     //
-    // Added by install-expo-modules
-    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", rootDir.getAbsoluteFile().getParentFile().getAbsolutePath(), "android", "absolute"].execute(null, rootDir).text.trim())
-    cliFile = new File(["node", "--print", "require.resolve('@expo/cli')"].execute(null, rootDir).text.trim())
-    bundleCommand = "export:embed"
-    //
-    // Added by install-expo-modules
-    entryFile = file(["node", "-e", "require('expo/scripts/resolveAppEntry')", rootDir.getAbsoluteFile().getParentFile().getAbsolutePath(), "android", "absolute"].execute(null, rootDir).text.trim())
+    // 修复双重 Junction 路径下 Metro 入口解析错误：
+    // 当 Metro 的 projectRoot 是 C:\Users\Administrator\Desktop\nnnn\MusicFree-Source 且
+    // entryFile 也指向同一目录时，Metro _resolveRelativePath(relativeTo:"server") 会返回形如
+    // `./../nnnn/MusicFree-Source/index.js` 的相对路径，metro resolver 再次解析即定位失败
+    // （..\nnnn\nnnn\... 不存在）。
+    // 这里使用 Metro 标准入口形式：`./index`（不带扩展名，以 projectRoot 为基准），
+    // 即可让 Metro 直接定位到 `${projectRoot}/index.js`，彻底绕开双重路径问题。
+    entryFile = file("${rootDir.getAbsoluteFile().getParentFile()}/index.js").getCanonicalFile()
+    // 显式重写 Metro projectRoot，保证与 entryFile 同根，避免上述相对路径推断。
+    project.ext.react = (project.hasProperty("react") ? project.property("react") : [:]) + [
+        root: rootDir.getAbsoluteFile().getParentFile().getAbsolutePath()
+    ]
     cliFile = new File(["node", "--print", "require.resolve('@expo/cli')"].execute(null, rootDir).text.trim())
     bundleCommand = "export:embed"
 }
