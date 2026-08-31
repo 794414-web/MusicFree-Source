@@ -290,6 +290,10 @@ export interface ILanguageData {
     "basicSettings.musicDetailDefault.album": string; // 专辑
     "basicSettings.musicDetailDefault.lyric": string; // 歌词
     "basicSettings.musicDetailAwake": string; // 唤醒音乐详情
+    "basicSettings.musicDetailBackgroundMode": string; // 歌曲详情页背景模式
+    "basicSettings.musicDetailBackgroundMode.songCover": string; // 歌曲封面
+    "basicSettings.musicDetailBackgroundMode.themeColor": string; // 主题颜色
+    "basicSettings.musicDetailBackgroundMode.themeGradient": string; // 主题渐变
     "basicSettings.associateLyricType": string; // 关联歌词类型
     "basicSettings.associateLyricType.input": string; // 输入
     "basicSettings.associateLyricType.search": string; // 搜索

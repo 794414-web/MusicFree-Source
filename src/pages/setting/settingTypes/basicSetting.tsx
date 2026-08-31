@@ -125,6 +125,7 @@ export default function BasicSetting() {
     const downloadQualityOrder = useAppConfig("basic.downloadQualityOrder");
     const musicDetailDefault = useAppConfig("basic.musicDetailDefault");
     const musicDetailAwake = useAppConfig("basic.musicDetailAwake");
+    const musicDetailBackgroundMode = useAppConfig("basic.musicDetailBackgroundMode");
     const maxHistoryLen = useAppConfig("basic.maxHistoryLen");
     const autoUpdatePlugin = useAppConfig("basic.autoUpdatePlugin");
     const notCheckPluginVersion = useAppConfig("basic.notCheckPluginVersion");
@@ -179,6 +180,17 @@ export default function BasicSetting() {
                     t("basicSettings.musicDetailAwake"),
                     "basic.musicDetailAwake",
                     musicDetailAwake ?? false,
+                ),
+                createRadio(
+                    t("basicSettings.musicDetailBackgroundMode"),
+                    "basic.musicDetailBackgroundMode",
+                    ["songCover", "themeColor", "themeGradient"],
+                    musicDetailBackgroundMode ?? "songCover",
+                    {
+                        songCover: t("basicSettings.musicDetailBackgroundMode.songCover"),
+                        themeColor: t("basicSettings.musicDetailBackgroundMode.themeColor"),
+                        themeGradient: t("basicSettings.musicDetailBackgroundMode.themeGradient"),
+                    },
                 ),
                 createRadio(
                     t("basicSettings.associateLyricType"),

@@ -84,6 +84,7 @@ function setupLowMemoryDefaults() {
         ["basic.autoUpdatePlugin", false],
         ["basic.maxHistoryLen", 20],
         ["basic.musicDetailAwake", false],
+        ["basic.musicDetailBackgroundMode", "songCover"],
         ["basic.autoPlayWhenAppStart", false],
         ["basic.notInterrupt", true],
         ["basic.tryChangeSourceWhenPlayFail", true],
