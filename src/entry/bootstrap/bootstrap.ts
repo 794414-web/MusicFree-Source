@@ -563,7 +563,18 @@ export default async function () {
         getDefaultStore().set(bootstrapAtom, {
             "state": "Loading",
         });
-        await bootstrapImpl();
+        // 给整个 bootstrap 加 20 秒超时保护
+        // 某些步骤（如 readDir 在无 storage 权限时）可能挂死，
+        // 不加超时会导致 SplashScreen 永不隐藏，应用卡在图标界面
+        await Promise.race([
+            bootstrapImpl(),
+            new Promise<void>((_, reject) =>
+                setTimeout(
+                    () => reject(new Error("bootstrap 超时（20s）")),
+                    20000,
+                ),
+            ),
+        ]);
         bindEvents();
         getDefaultStore().set(bootstrapAtom, {
             "state": "Done",
@@ -579,8 +590,14 @@ export default async function () {
                 reason: e,
             });
         }
+    } finally {
+        // 无论成功/失败/超时，都必须隐藏 splash
+        // 否则应用会卡在启动图标界面无法使用
+        console.log("HIDE");
+        try {
+            await SplashScreen.hideAsync();
+        } catch (e) {
+            console.warn("SplashScreen.hideAsync failed:", e);
+        }
     }
-    // 隐藏开屏动画
-    console.log("HIDE");
-    await SplashScreen.hideAsync();
 }
