@@ -530,15 +530,15 @@ class TrackPlayer extends EventEmitter<{
                 plugin?.methods?.getMediaSource
             ) {
                 // 循环中切歌则中止:与原 inline 循环行为一致
-                const gdResult = await this.getMediaSourceByQualityOrder(
+                const directGDResult = await this.getMediaSourceByQualityOrder(
                     plugin,
                     musicItem,
                     qualityOrder,
                     () => !this.isCurrentMusic(musicItem),
                 );
-                if (gdResult) {
-                    source = gdResult.source;
-                    this.setQuality(gdResult.quality);
+                if (directGDResult) {
+                    source = directGDResult.source;
+                    this.setQuality(directGDResult.quality);
                 } else if (!this.isCurrentMusic(musicItem)) {
                     // 5.3.2 已经切换到其他歌曲了
                     return;
@@ -629,7 +629,7 @@ class TrackPlayer extends EventEmitter<{
                 "The player is not initialized. Call setupPlayer first."
             ) {
                 await ReactNativeTrackPlayer.setupPlayer();
-                this.play(musicItem, forcePlay);
+                return this.play(musicItem, forcePlay);
             } else if (message === PlayFailReason.FORBID_CELLUAR_NETWORK_PLAY) {
                 if (getCurrentDialog()?.name !== "SimpleDialog") {
                     showDialog("SimpleDialog", {
@@ -956,7 +956,7 @@ class TrackPlayer extends EventEmitter<{
 
     // 与 LyricManager 保持一致的繁简/括号归一化表（TrackPlayer 版本，不与
     // LyricManager 共享引用避免在模块加载期产生不必要的耦合）。
-    private static TRAD_TO_SIMPLE: Record<string, string> = {"倫":"伦","傑":"杰","葉":"叶","黃":"黄","陳":"陈","張":"张","劉":"刘","楊":"杨","吳":"吴","鄭":"郑","馬":"马","謝":"谢","蘇":"苏","許":"许","趙":"赵","錢":"钱","孫":"孙","萬":"万","軍":"军","國":"国","華":"华","漢":"汉","愛":"爱","會":"会","還":"还","這":"这","個":"个","們":"们","來":"来","為":"为","麼":"么","說":"说","時":"时","間":"间","點":"点","龍":"龙","鳳":"凤","夢":"梦","獨":"独","潔":"洁","純":"纯","靜":"静","樂":"乐","館":"馆","觀":"观","歡":"欢","發":"发","長":"长","門":"门","問":"问","開":"开","關":"关","對":"对","錯":"错","過":"过","遠":"远","邊":"边","讓":"让","請":"请","詩":"诗","詞":"词","語":"语","話":"话","讀":"读","寫":"写","學":"学","習":"习","書":"书","畫":"画","紙":"纸","筆":"笔","電":"电","腦":"脑","機":"机","車":"车","輪":"轮","飛":"飞","風":"风","雲":"云","興":"兴","東":"东","頭":"头","兒":"儿","轉":"转","歷":"历","單":"单","雙":"双","聲":"声","聽":"听","歸":"归","舊":"旧","廣":"广","園":"园","燈":"灯","號":"号","線":"线","紅":"红","綠":"绿","藍":"蓝","銀":"银","鋼":"钢","錄":"录","簡":"简","編":"编","維":"维","結":"结","網":"网","組":"组","總":"总","經":"经","絕":"绝","續":"续","繼":"继","約":"约","級":"级","紀":"纪","繞":"绕","緣":"缘","縮":"缩","議":"议","譯":"译","護":"护","買":"买","賣":"卖","贊":"赞","貝":"贝","貴":"贵","賓":"宾","賬":"账","贈":"赠","質":"质","賭":"赌","贏":"赢","賢":"贤","賴":"赖","躍":"跃","認":"认","誤":"误","誘":"诱","謊":"谎","謙":"谦","證":"证","譚":"谭","譜":"谱","響":"响","項":"项","順":"顺","須":"须","預":"预","頑":"顽","顧":"顾","顫":"颤","顯":"显","驗":"验","驚":"惊","騙":"骗","體":"体","髮":"发","鬍":"胡","魚":"鱼","魯":"鲁","鯊":"鲨","鯨":"鲸","鳥":"鸟","鴨":"鸭","鶯":"莺","鶴":"鹤","麥":"麦","麻":"麻","黑":"黑","齊":"齐","齒":"齿","齣":"出","龜":"龟","鼓":"鼓","臺":"台","颱":"台","鵬":"鹏","鷹":"鹰","麗":"丽","麋":"麋"};
+    private static TRAD_TO_SIMPLE: Record<string, string> = { "倫":"伦","傑":"杰","葉":"叶","黃":"黄","陳":"陈","張":"张","劉":"刘","楊":"杨","吳":"吴","鄭":"郑","馬":"马","謝":"谢","蘇":"苏","許":"许","趙":"赵","錢":"钱","孫":"孙","萬":"万","軍":"军","國":"国","華":"华","漢":"汉","愛":"爱","會":"会","還":"还","這":"这","個":"个","們":"们","來":"来","為":"为","麼":"么","說":"说","時":"时","間":"间","點":"点","龍":"龙","鳳":"凤","夢":"梦","獨":"独","潔":"洁","純":"纯","靜":"静","樂":"乐","館":"馆","觀":"观","歡":"欢","發":"发","長":"长","門":"门","問":"问","開":"开","關":"关","對":"对","錯":"错","過":"过","遠":"远","邊":"边","讓":"让","請":"请","詩":"诗","詞":"词","語":"语","話":"话","讀":"读","寫":"写","學":"学","習":"习","書":"书","畫":"画","紙":"纸","筆":"笔","電":"电","腦":"脑","機":"机","車":"车","輪":"轮","飛":"飞","風":"风","雲":"云","興":"兴","東":"东","頭":"头","兒":"儿","轉":"转","歷":"历","單":"单","雙":"双","聲":"声","聽":"听","歸":"归","舊":"旧","廣":"广","園":"园","燈":"灯","號":"号","線":"线","紅":"红","綠":"绿","藍":"蓝","銀":"银","鋼":"钢","錄":"录","簡":"简","編":"编","維":"维","結":"结","網":"网","組":"组","總":"总","經":"经","絕":"绝","續":"续","繼":"继","約":"约","級":"级","紀":"纪","繞":"绕","緣":"缘","縮":"缩","議":"议","譯":"译","護":"护","買":"买","賣":"卖","贊":"赞","貝":"贝","貴":"贵","賓":"宾","賬":"账","贈":"赠","質":"质","賭":"赌","贏":"赢","賢":"贤","賴":"赖","躍":"跃","認":"认","誤":"误","誘":"诱","謊":"谎","謙":"谦","證":"证","譚":"谭","譜":"谱","響":"响","項":"项","順":"顺","須":"须","預":"预","頑":"顽","顧":"顾","顫":"颤","顯":"显","驗":"验","驚":"惊","騙":"骗","體":"体","髮":"发","鬍":"胡","魚":"鱼","魯":"鲁","鯊":"鲨","鯨":"鲸","鳥":"鸟","鴨":"鸭","鶯":"莺","鶴":"鹤","麥":"麦","麻":"麻","黑":"黑","齊":"齐","齒":"齿","齣":"出","龜":"龟","鼓":"鼓","臺":"台","颱":"台","鵬":"鹏","鷹":"鹰","麗":"丽","麋":"麋" };
 
     private static normalizeMediaText(str: string | undefined | null): string {
         const s = String(str ?? "");
@@ -968,7 +968,7 @@ class TrackPlayer extends EventEmitter<{
         return out
             .toLowerCase()
             .replace(/[\s\u3000]/g, "")
-            .replace(/[（(\【\[][\s\S]*?[）)\】\]]/g, "")
+            .replace(/(?:（|\(|【|\[)[\s\S]*?(?:）|\)|】|\])/g, "")
             .replace(/[，。、；：！？!?·,'"“”‘’\-—~：]/g, "");
     }
 
@@ -988,44 +988,88 @@ class TrackPlayer extends EventEmitter<{
         if (!tA || tA !== tB) return false;
         const arA = TrackPlayer.normalizeMediaText(a.artist);
         const arB = TrackPlayer.normalizeMediaText(b.artist);
-        if (!arA || !arB) return true;
+        if (arB && !arA) return false;
+        if (!arB) return true;
         return arA.includes(arB) || arB.includes(arA);
     }
 
-    /**
-     * 在 GD 搜索结果中选择匹配度最高的条目：
-     *   1) 先在最多前 8 条中找 isSameMediaSong 返回 true 的（标题+歌手都匹配）；
-     *   2) 找不到时，按归一化后的最小编辑距离打分，取分数最小且距离阈值内的条目；
-     *   3) 都不满足才返回 null（调用方再决定是否回退）。
-     */
-    private pickBestGDMatch<T extends { title?: string; artist?: string }>(
+    private static hasAlternateVersion(value: string | undefined | null) {
+        return /(?:live|现场|cover|翻唱|remix|dj|伴奏|纯音乐|instrumental|acoustic|karaoke|女声版|男声版|串烧|电音版|伴唱|消音版)/i.test(
+            String(value ?? ""),
+        );
+    }
+
+    private static durationSeconds(value: unknown): number | null {
+        const duration = Number(value);
+        if (!Number.isFinite(duration) || duration <= 0) return null;
+        return duration > 10000 ? duration / 1000 : duration;
+    }
+
+    private pickBestGDMatch<
+        T extends {
+            title?: string;
+            artist?: string;
+            album?: string;
+            duration?: number;
+        },
+    >(
         list: T[],
-        target: { title?: string; artist?: string },
+        target: {
+            title?: string;
+            artist?: string;
+            album?: string;
+            duration?: number;
+        },
     ): T | null {
         if (!list?.length) return null;
-        const pool = list.slice(0, 8);
-        for (const item of pool) {
-            if (TrackPlayer.isSameMediaSong(item, target)) return item;
-        }
         const normTitle = TrackPlayer.normalizeMediaText(target.title);
         const normArtist = TrackPlayer.normalizeMediaText(target.artist);
-        if (!normTitle) return list[0];
-        let best: T | null = null;
-        let bestScore = Infinity;
-        for (const item of pool) {
-            const score =
-                minDistance(normTitle, TrackPlayer.normalizeMediaText(item.title)) * 2 +
-                minDistance(normArtist, TrackPlayer.normalizeMediaText(item.artist));
-            if (score < bestScore) {
-                bestScore = score;
-                best = item;
+        if (!normTitle) return null;
+        const targetAlternate = TrackPlayer.hasAlternateVersion(target.title);
+        const targetAlbum = TrackPlayer.normalizeMediaText(target.album);
+        const targetDuration = TrackPlayer.durationSeconds(target.duration);
+        const scored = list.slice(0, 20).map(item => {
+            const title = TrackPlayer.normalizeMediaText(item.title);
+            const artist = TrackPlayer.normalizeMediaText(item.artist);
+            if (!title || (normArtist && !artist)) {
+                return { item, score: -Infinity };
             }
-        }
-        // 距离过大(标题+歌手归一化后差异超 10) 就放弃，避免被完全不相关的结果误伤
-        if (best && bestScore <= Math.max(10, normTitle.length + Math.max(0, normArtist.length - 4))) {
-            return best;
-        }
-        return null;
+            let score = 0;
+            if (title === normTitle) score += 50;
+            else if (title.includes(normTitle) || normTitle.includes(title)) {
+                score += 18;
+            } else {
+                score -= minDistance(normTitle, title) * 6;
+            }
+            if (normArtist) {
+                score += artist.includes(normArtist) || normArtist.includes(artist)
+                    ? 40
+                    : -70;
+            }
+            if (
+                TrackPlayer.hasAlternateVersion(item.title) &&
+                !targetAlternate
+            ) {
+                score -= 45;
+            }
+            const album = TrackPlayer.normalizeMediaText(item.album);
+            if (targetAlbum && album) {
+                score += album === targetAlbum ? 10 : 0;
+            }
+            const duration = TrackPlayer.durationSeconds(item.duration);
+            if (targetDuration && duration) {
+                const difference = Math.abs(targetDuration - duration);
+                score += difference <= 3 ? 12 : difference <= 8 ? 4 : -12;
+            }
+            return { item, score };
+        }).sort((a, b) => b.score - a.score);
+        const best = scored[0];
+        if (!best || best.score < (normArtist ? 70 : 45)) return null;
+        const second = scored.slice(1).find(candidate =>
+            !TrackPlayer.isSameMediaSong(candidate.item, best.item),
+        );
+        if (second && best.score - second.score < 6) return null;
+        return best.item;
     }
 
     /**

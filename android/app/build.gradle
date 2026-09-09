@@ -95,12 +95,21 @@ def enableProguardInReleaseBuilds = false
  */
 def jscFlavor = 'org.webkit:android-jsc:+'
 
-// !! Add lines
 def keystoreProperties = new Properties()
 def keystorePropertiesFile = rootProject.file('keystore.properties')
 if (keystorePropertiesFile.exists()) {
     keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
 }
+
+def releaseProperty = { String name ->
+    def value = project.findProperty(name) ?: System.getenv(name) ?: keystoreProperties.getProperty(name)
+    return value == null ? null : value.toString().trim()
+}
+def releaseStoreFile = releaseProperty("RELEASE_STORE_FILE")
+def releaseStorePassword = releaseProperty("RELEASE_STORE_PASSWORD")
+def releaseKeyAlias = releaseProperty("RELEASE_KEY_ALIAS")
+def releaseKeyPassword = releaseProperty("RELEASE_KEY_PASSWORD")
+def releaseSigningConfigured = [releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword].every { it }
 
 static def getVersion() {
     def inputFile = new File("../package.json")
@@ -108,29 +117,35 @@ static def getVersion() {
     return packageJson["version"]
 }
 
-// 基于日期生成 versionCode: yyyyMMdd (8位)
-// 为支持同一天多次打包（versionCode 必须严格递增才能覆盖升级），
-// 使用记录文件 app_version.txt 保证每次构建 versionCode 比上次大 1
-static def getVersionCode() {
-    def now = new Date()
-    def cal = Calendar.getInstance()
-    cal.setTime(now)
-    def year = cal.get(Calendar.YEAR)
-    def month = String.format('%02d', cal.get(Calendar.MONTH) + 1)
-    def day = String.format('%02d', cal.get(Calendar.DAY_OF_MONTH))
-    def dateCode = Integer.parseInt("${year}${month}${day}")
-    def file = new File("../app_version.txt")
-    def last = dateCode
-    if (file.exists() && file.text.trim().isInteger()) {
-        last = file.text.trim().toInteger()
+static def parseVersionCode(String rawValue) {
+    if (!rawValue?.isInteger()) {
+        throw new GradleException("VERSION_CODE 必须是正整数")
     }
-    def vc = Math.max(dateCode, last + 1)
-    file.text = vc.toString()
-    return vc
+    def value = rawValue.toInteger()
+    if (value <= 0) {
+        throw new GradleException("VERSION_CODE 必须是正整数")
+    }
+    return value
 }
 
+static def deriveVersionCode(String version) {
+    def matcher = version =~ /^(\d+)\.(\d+)\.(\d+)(?:-beta\.(\d+))?$/
+    if (!matcher.matches()) {
+        throw new GradleException("无法从版本号生成 VERSION_CODE：${version}")
+    }
+    def major = matcher.group(1).toInteger()
+    def minor = matcher.group(2).toInteger()
+    def patch = matcher.group(3).toInteger()
+    def beta = matcher.group(4)
+    if (major > 20 || minor > 99 || patch > 999) {
+        throw new GradleException("版本号超出 VERSION_CODE 编码范围：${version}")
+    }
+    return major * 100000000 + minor * 1000000 + patch * 1000 + (beta ? Math.min(beta.toInteger(), 998) : 999)
+}
+
+def configuredVersionCode = project.findProperty("VERSION_CODE") ?: System.getenv("VERSION_CODE")
 def appVersion = getVersion()
-def appVersionCode = getVersionCode()
+def appVersionCode = configuredVersionCode ? parseVersionCode(configuredVersionCode.toString()) : deriveVersionCode(appVersion)
 
 
 android {
@@ -154,12 +169,13 @@ android {
             keyAlias 'androiddebugkey'
             keyPassword 'android'
         }
-        // !! Add lines
-         release {
-            storeFile file('debug.keystore')
-            storePassword 'android'
-            keyAlias 'androiddebugkey'
-            keyPassword 'android'
+        release {
+            if (releaseSigningConfigured) {
+                storeFile file(releaseStoreFile)
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
         }
     }
     splits {
@@ -185,13 +201,29 @@ android {
             signingConfig signingConfigs.debug
         }
         release {
-            // Caution! In production, you need to generate your own keystore file.
-            // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.release
             minifyEnabled enableProguardInReleaseBuilds
             shrinkResources false
             proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
         }
+    }
+}
+
+gradle.taskGraph.whenReady { graph ->
+    def releaseRequested = graph.allTasks.any { task ->
+        task.project == project && (
+            task.name == "assembleRelease" ||
+            task.name == "bundleRelease" ||
+            task.name == "installRelease" ||
+            task.name == "packageRelease" ||
+            task.name == "packageReleaseUniversalApk"
+        )
+    }
+    if (releaseRequested && !releaseSigningConfigured) {
+        throw new GradleException("Release 构建缺少签名配置：RELEASE_STORE_FILE、RELEASE_STORE_PASSWORD、RELEASE_KEY_ALIAS、RELEASE_KEY_PASSWORD")
+    }
+    if (releaseRequested && releaseSigningConfigured && !file(releaseStoreFile).exists()) {
+        throw new GradleException("Release 签名文件不存在：${releaseStoreFile}")
     }
 }
 

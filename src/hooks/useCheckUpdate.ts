@@ -21,7 +21,12 @@ export const checkUpdateAndShowResult = (
         if (updateInfo?.needUpdate) {
             const { data } = updateInfo;
             const skipVersion = PersistStatus.get("app.skipVersion");
-            console.log(skipVersion, data);
+            if (!Array.isArray(data.download) || data.download.length === 0) {
+                if (showToast) {
+                    Toast.warn("发现新版本，但没有可用下载地址");
+                }
+                return;
+            }
             if (
                 checkSkip &&
                 skipVersion &&

@@ -6,7 +6,6 @@ import useColors from "@/hooks/useColors";
 import usePaste from "@/hooks/usePaste";
 
 import ThemeText from "@/components/base/themeText";
-import PasteButton from "@/components/base/pasteButton";
 import { ScrollView } from "react-native-gesture-handler";
 import PanelBase from "../base/panelBase";
 import { hidePanel } from "../usePanel";
@@ -59,59 +58,109 @@ export default function SimpleInput(props: ISimpleInputProps) {
                     setTimeout(() => inputRef.current?.focus(), 100);
                 }
                 return (
-                <View style={styles.container}>
-                    <ScrollView
-                        style={styles.scrollArea}
-                        contentContainerStyle={styles.scrollContent}
-                        keyboardShouldPersistTaps="handled"
-                        showsVerticalScrollIndicator>
-                        {title ? (
-                            <View style={styles.titleBar}>
-                                <ThemeText
-                                    style={styles.title}
-                                    fontWeight="bold"
-                                    fontSize="title">
-                                    {title}
-                                </ThemeText>
-                            </View>
-                        ) : null}
+                    <View style={styles.container}>
+                        <ScrollView
+                            style={styles.scrollArea}
+                            contentContainerStyle={styles.scrollContent}
+                            keyboardShouldPersistTaps="handled"
+                            showsVerticalScrollIndicator>
+                            {title ? (
+                                <View style={styles.titleBar}>
+                                    <ThemeText
+                                        style={styles.title}
+                                        fontWeight="bold"
+                                        fontSize="title">
+                                        {title}
+                                    </ThemeText>
+                                </View>
+                            ) : null}
 
-                        <View style={styles.inputRow}>
-                            <TextInput
-                                ref={inputRef}
-                                value={input}
-                                accessible
-                                accessibilityLabel={t("panel.simpleInput.inputLabel")}
-                                accessibilityHint={placeholder}
-                                onChangeText={_ => {
-                                    setInput(_);
-                                }}
-                                style={[
-                                    styles.input,
-                                    {
-                                        color: colors.text,
-                                        backgroundColor: colors.placeholder,
-                                    },
-                                ]}
-                                placeholderTextColor={colors.textSecondary}
-                                placeholder={placeholder ?? ""}
-                                maxLength={maxLength}
-                            />
+                            <View style={styles.inputRow}>
+                                <TextInput
+                                    ref={inputRef}
+                                    value={input}
+                                    accessible
+                                    accessibilityLabel={t("panel.simpleInput.inputLabel")}
+                                    accessibilityHint={placeholder}
+                                    onChangeText={_ => {
+                                        setInput(_);
+                                    }}
+                                    style={[
+                                        styles.input,
+                                        {
+                                            color: colors.text,
+                                            backgroundColor: colors.placeholder,
+                                        },
+                                    ]}
+                                    placeholderTextColor={colors.textSecondary}
+                                    placeholder={placeholder ?? ""}
+                                    maxLength={maxLength}
+                                />
+                                <TouchableOpacity
+                                    style={[
+                                        styles.pasteBtn,
+                                        { backgroundColor: colors.placeholder },
+                                    ]}
+                                    onPress={() => paste(setInput)}>
+                                    <ThemeText
+                                        fontWeight="medium"
+                                        fontSize="subTitle">
+                                        {t("common.paste")}
+                                    </ThemeText>
+                                </TouchableOpacity>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.confirmBtn,
+                                        { backgroundColor: colors.primary },
+                                    ]}
+                                    onPress={() => {
+                                        onOk(input, hidePanel);
+                                    }}>
+                                    <ThemeText
+                                        fontWeight="medium"
+                                        color="#fff"
+                                        fontSize="subTitle">
+                                        {t("common.confirm")}
+                                    </ThemeText>
+                                </TouchableOpacity>
+                            </View>
+
+                            {hints?.length ? (
+                                <View style={styles.hints}>
+                                    {hints.map((_, index) => (
+                                        <ThemeText
+                                            key={`hint-index-${index}`}
+                                            style={styles.hintLine}
+                                            fontSize="subTitle"
+                                            fontColor="textSecondary">
+                                        ￮ {_}
+                                        </ThemeText>
+                                    ))}
+                                </View>
+                            ) : null}
+                        </ScrollView>
+
+                        <View
+                            style={[
+                                styles.bottomBar,
+                                { backgroundColor: colors.backdrop },
+                            ]}>
                             <TouchableOpacity
                                 style={[
-                                    styles.pasteBtn,
-                                    { backgroundColor: colors.placeholder },
+                                    styles.bottomBtn,
+                                    { borderColor: colors.divider },
                                 ]}
-                                onPress={() => paste(setInput)}>
-                                <ThemeText
-                                    fontWeight="medium"
-                                    fontSize="subTitle">
-                                    {t("common.paste")}
+                                onPress={() => {
+                                    onCancel?.();
+                                    hidePanel();
+                                }}>
+                                <ThemeText fontWeight="medium">
+                                    {t("common.cancel")}
                                 </ThemeText>
                             </TouchableOpacity>
                             <TouchableOpacity
                                 style={[
-                                    styles.confirmBtn,
+                                    styles.bottomBtn,
                                     { backgroundColor: colors.primary },
                                 ]}
                                 onPress={() => {
@@ -119,63 +168,14 @@ export default function SimpleInput(props: ISimpleInputProps) {
                                 }}>
                                 <ThemeText
                                     fontWeight="medium"
-                                    color="#fff"
-                                    fontSize="subTitle">
+                                    color="#fff">
                                     {t("common.confirm")}
                                 </ThemeText>
                             </TouchableOpacity>
                         </View>
-
-                        {hints?.length ? (
-                            <View style={styles.hints}>
-                                {hints.map((_, index) => (
-                                    <ThemeText
-                                        key={`hint-index-${index}`}
-                                        style={styles.hintLine}
-                                        fontSize="subTitle"
-                                        fontColor="textSecondary">
-                                        ￮ {_}
-                                    </ThemeText>
-                                ))}
-                            </View>
-                        ) : null}
-                    </ScrollView>
-
-                    <View
-                        style={[
-                            styles.bottomBar,
-                            { backgroundColor: colors.backdrop },
-                        ]}>
-                        <TouchableOpacity
-                            style={[
-                                styles.bottomBtn,
-                                { borderColor: colors.divider },
-                            ]}
-                            onPress={() => {
-                                onCancel?.();
-                                hidePanel();
-                            }}>
-                            <ThemeText fontWeight="medium">
-                                {t("common.cancel")}
-                            </ThemeText>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[
-                                styles.bottomBtn,
-                                { backgroundColor: colors.primary },
-                            ]}
-                            onPress={() => {
-                                onOk(input, hidePanel);
-                            }}>
-                            <ThemeText
-                                fontWeight="medium"
-                                color="#fff">
-                                {t("common.confirm")}
-                            </ThemeText>
-                        </TouchableOpacity>
                     </View>
-                </View>
-            );}}
+                );
+            }}
         />
     );
 }

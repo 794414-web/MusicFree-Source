@@ -76,39 +76,39 @@ export function useNezhaCarAdapter() {
 
         const unsub = onSteeringWheelKey(async (event) => {
             switch (event.action) {
-                case "previous":
-                    await TrackPlayer.skipToPrevious();
-                    break;
-                case "next":
-                    await TrackPlayer.skipToNext();
-                    break;
-                case "playPause": {
-                    const RNTrackPlayer = require("react-native-track-player").default;
-                    try {
-                        const state = await RNTrackPlayer.getPlaybackState();
-                        if (musicIsPaused(state)) {
-                            await TrackPlayer.play();
-                        } else {
-                            await TrackPlayer.pause();
-                        }
-                    } catch {
-                        // 播放器未就绪，忽略
+            case "previous":
+                await TrackPlayer.skipToPrevious();
+                break;
+            case "next":
+                await TrackPlayer.skipToNext();
+                break;
+            case "playPause": {
+                const RNTrackPlayer = require("react-native-track-player").default;
+                try {
+                    const state = await RNTrackPlayer.getPlaybackState();
+                    if (musicIsPaused(state)) {
+                        await TrackPlayer.play();
+                    } else {
+                        await TrackPlayer.pause();
                     }
-                    break;
+                } catch {
+                    // 播放器未就绪，忽略
                 }
-                case "play":
-                    await TrackPlayer.play();
-                    break;
-                case "pause":
-                    await TrackPlayer.pause();
-                    break;
-                case "volumeUp":
-                case "volumeDown":
-                    // 音量已在原生层处理，JS 层无需重复操作
-                    break;
-                default:
-                    // 未知按键（如 unknown_10001），忽略
-                    break;
+                break;
+            }
+            case "play":
+                await TrackPlayer.play();
+                break;
+            case "pause":
+                await TrackPlayer.pause();
+                break;
+            case "volumeUp":
+            case "volumeDown":
+                // 音量已在原生层处理，JS 层无需重复操作
+                break;
+            default:
+                // 未知按键（如 unknown_10001），忽略
+                break;
             }
         });
 

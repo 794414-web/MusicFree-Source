@@ -28,7 +28,6 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
     const effectiveUrls = Array.isArray(downloadUrls) && downloadUrls.length > 0
         ? downloadUrls
         : [fromUrl, backUrl].filter((u): u is string => !!u);
-    const firstUrl = effectiveUrls[0] ?? fromUrl;
     const [skipState, setSkipState] = useState(false);
     const [downloading, setDownloading] = useState(false);
     const [progress, setProgress] = useState(0);
@@ -48,8 +47,8 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
         totalBytes > 0
             ? `${progress}%`
             : downloadedBytes > 0
-              ? `已下载 ${sizeFormatter(downloadedBytes)}`
-              : `0%`;
+                ? `已下载 ${sizeFormatter(downloadedBytes)}`
+                : "0%";
 
     const clearTimer = () => {
         if (timerRef.current) {
@@ -73,6 +72,10 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
             } else if (event.type === "fallback") {
                 // 静默：原生正在自动切换链路，这里只 Toast 提示让用户看到切换过程
                 Toast.warn(event.message || "正在切换下载源...");
+            } else if (event.type === "permission") {
+                setDownloading(false);
+                clearTimer();
+                Toast.warn(event.message || "请允许安装未知应用后重试");
             } else if (event.type === "error") {
                 setDownloading(false);
                 clearTimer();
@@ -81,7 +84,7 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
             }
         });
         return unsubscribe;
-        // eslint-disable-next-line react-hooks/exhaustive-deps
+         
     }, []);
 
     // 备用链接重入标记
@@ -122,7 +125,7 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
             let failedReported = false;
             // 把「链路切换」也计入总超时：给每条链路留 2 分钟最低窗口，总体 6 分钟上限
             const startTime = Date.now();
-            const TOTAL_TIMEOUT_MS = Math.max(360_000, effectiveUrls.length * 120_000);
+            const TOTAL_TIMEOUT_MS = 360_000;
 
             timerRef.current = setInterval(async () => {
                 try {
@@ -151,6 +154,7 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                     if (Date.now() - startTime > TOTAL_TIMEOUT_MS) {
                         if (!failedReported) {
                             failedReported = true;
+                            await ApkUpdateModule.cancelDownload();
                             setDownloading(false);
                             clearTimer();
                             Toast.warn("下载超时：所有链路在限定时间内均未完成");
@@ -165,6 +169,7 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
                         if (stalledCount >= 120) {
                             if (!failedReported) {
                                 failedReported = true;
+                                await ApkUpdateModule.cancelDownload();
                                 setDownloading(false);
                                 clearTimer();
                                 Toast.warn("下载卡住超过 2 分钟，已停止。可稍后重试");
@@ -187,6 +192,9 @@ export default function DownloadDialog(props: IDownloadDialogProps) {
     return (
         <Dialog
             onDismiss={() => {
+                if (downloading) {
+                    void ApkUpdateModule.cancelDownload();
+                }
                 if (skipState) {
                     PersistStatus.set("app.skipVersion", version);
                 }

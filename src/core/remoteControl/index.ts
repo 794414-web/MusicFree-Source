@@ -44,7 +44,7 @@ function isValidWsUrl(url: string): boolean {
         return false;
     }
     // 简单校验 host:port 格式
-    return /^[\w.\-]+(:\d+)?(\/.*)?$/.test(rest);
+    return /^[\w.-]+(:\d+)?(\/.*)?$/.test(rest);
 }
 
 /**
@@ -180,7 +180,12 @@ class RemoteControlService {
      *    若 ws 仍为当前实例则主动触发一次重连。
      */
     private connect() {
-        if (this.stopped) {
+        if (
+            this.stopped ||
+            (this.ws &&
+                (this.ws.readyState === WebSocket.CONNECTING ||
+                    this.ws.readyState === WebSocket.OPEN))
+        ) {
             return;
         }
 
@@ -265,7 +270,7 @@ class RemoteControlService {
             }
         };
 
-        ws.onerror = (e: any) => {
+        ws.onerror = () => {
             if (this.stopped || this.ws !== ws) {
                 return;
             }

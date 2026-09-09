@@ -9,6 +9,7 @@ const express = require("express");
 const bodyParser = require("body-parser");
 const http = require("http");
 const WebSocket = require("ws");
+const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
@@ -33,6 +34,52 @@ if (!fs.existsSync(configPath)) {
 }
 
 const config = JSON.parse(fs.readFileSync(configPath, "utf8"));
+const apiToken = String(process.env.MCP_API_TOKEN || config.server?.apiToken || "");
+
+function tokensMatch(candidate) {
+    const supplied = Buffer.from(String(candidate || ""));
+    const expected = Buffer.from(apiToken);
+    return supplied.length === expected.length && crypto.timingSafeEqual(supplied, expected);
+}
+
+function requestToken(req) {
+    const authorization = String(req.headers.authorization || "");
+    if (authorization.startsWith("Bearer ")) return authorization.slice(7).trim();
+    if (authorization.startsWith("Basic ")) {
+        try {
+            const credentials = Buffer.from(authorization.slice(6), "base64").toString("utf8");
+            return credentials.slice(credentials.indexOf(":") + 1);
+        } catch (_) {
+            return "";
+        }
+    }
+    const headerToken = req.headers["x-api-token"];
+    if (Array.isArray(headerToken)) return headerToken[0] || "";
+    return String(headerToken || "");
+}
+
+function requireApiToken(req, res, next) {
+    if (!apiToken) {
+        return res.status(503).json({ error: "MCP_API_TOKEN 未配置" });
+    }
+    if (!tokensMatch(requestToken(req))) {
+        res.set("WWW-Authenticate", "Basic realm=\"MusicFree MCP\"");
+        return res.status(401).json({ error: "未授权" });
+    }
+    next();
+}
+
+function maskSecret(value, visible = 4) {
+    if (!value) return value;
+    const text = String(value);
+    return "***" + text.slice(-visible);
+}
+
+function mergeValue(oldVal, newVal, mask = true) {
+    if (newVal === undefined) return oldVal;
+    if (mask && typeof newVal === "string" && newVal.startsWith("***")) return oldVal;
+    return newVal;
+}
 
 // ============================================================
 // 初始化核心组件
@@ -499,12 +546,40 @@ if (config.xiaozhi?.enabled) {
 // ============================================================
 const app = express();
 const server = http.createServer(app);
-const wss = new WebSocket.Server({ server, path: "/ws" });
+const wss = new WebSocket.Server({ noServer: true });
 
-// WebSocket 连接处理（车机连接）
-wss.on("connection", (ws) => {
+server.on("upgrade", (request, socket, head) => {
+    let pathname;
+    let token = "";
+    try {
+        const requestUrl = new URL(request.url, "http://localhost");
+        pathname = requestUrl.pathname;
+        token = requestUrl.searchParams.get("token") || "";
+    } catch (_) {
+        socket.destroy();
+        return;
+    }
+
+    if (pathname !== "/ws") return;
+
+    const authorization = String(request.headers.authorization || "");
+    if (authorization.startsWith("Bearer ")) {
+        token = authorization.slice(7).trim();
+    }
+
+    if (!apiToken || !tokensMatch(token)) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
+        socket.destroy();
+        return;
+    }
+
+    wss.handleUpgrade(request, socket, head, ws => {
+        wss.emit("connection", ws, request);
+    });
+});
+
+wss.on("connection", ws => {
     console.log("🔌  收到 WebSocket 连接（/ws）");
-    // 交给车机管理器
     carWsManager.registerCar(ws);
 });
 
@@ -518,8 +593,14 @@ app.get("/health", (req, res) => {
         status: "ok",
         service: "MusicFree MCP Server",
         version: "2.0.0",
+    });
+});
+
+app.use("/api", requireApiToken);
+
+app.get("/api/status", (req, res) => {
+    res.json({
         carConnected: carWsManager.hasCar(),
-        carInfo: carWsManager.getCarInfo(),
         services: {
             feishu: config.feishu?.enabled ? "enabled" : "disabled",
             wecom: config.wecom?.enabled ? "enabled" : "disabled",
@@ -587,22 +668,33 @@ app.post("/xiaozhi/callback", async (req, res) => {
 // 网页配置面板 - 读取配置
 app.get("/api/config", (req, res) => {
     const safeConfig = JSON.parse(JSON.stringify(config));
-    // 脱敏：只显示最后几个字符
+    if (safeConfig.server) delete safeConfig.server.apiToken;
+    if (safeConfig.musicfree?.accessToken) {
+        safeConfig.musicfree.accessToken = maskSecret(safeConfig.musicfree.accessToken);
+    }
     if (safeConfig.feishu?.appSecret) {
-        safeConfig.feishu.appSecret = "***" + safeConfig.feishu.appSecret.slice(-4);
+        safeConfig.feishu.appSecret = maskSecret(safeConfig.feishu.appSecret);
+    }
+    if (safeConfig.feishu?.verificationToken) {
+        safeConfig.feishu.verificationToken = maskSecret(safeConfig.feishu.verificationToken);
+    }
+    if (safeConfig.feishu?.encryptKey) {
+        safeConfig.feishu.encryptKey = maskSecret(safeConfig.feishu.encryptKey);
     }
     if (safeConfig.wecom?.secret) {
-        safeConfig.wecom.secret = "***" + safeConfig.wecom.secret.slice(-4);
+        safeConfig.wecom.secret = maskSecret(safeConfig.wecom.secret);
     }
     if (safeConfig.wecom?.token) {
-        safeConfig.wecom.token = "***" + safeConfig.wecom.token.slice(-4);
+        safeConfig.wecom.token = maskSecret(safeConfig.wecom.token);
     }
     if (safeConfig.wecom?.encodingAESKey) {
-        safeConfig.wecom.encodingAESKey = "***" + safeConfig.wecom.encodingAESKey.slice(-4);
+        safeConfig.wecom.encodingAESKey = maskSecret(safeConfig.wecom.encodingAESKey);
     }
     if (safeConfig.xiaozhi?.wsUrl) {
-        const parts = safeConfig.xiaozhi.wsUrl.split("token=");
-        if (parts[1]) safeConfig.xiaozhi.wsUrl = parts[0] + "token=***" + parts[1].slice(-8);
+        safeConfig.xiaozhi.wsUrl = safeConfig.xiaozhi.wsUrl.replace(
+            /([?&]token=)([^&]+)/i,
+            (_, prefix, value) => prefix + maskSecret(value, 8)
+        );
     }
     res.json(safeConfig);
 });
@@ -610,23 +702,17 @@ app.get("/api/config", (req, res) => {
 // 网页配置面板 - 保存配置
 app.post("/api/config", bodyParser.json(), (req, res) => {
     try {
-        const newConfig = req.body;
-        // 只更新允许修改的字段，保留原始敏感值
-        // （如果用户传的是 *** 开头的值，说明没改，保留原值）
-        function mergeValue(oldVal, newVal, mask = true) {
-            if (newVal === undefined) return oldVal;
-            if (mask && typeof newVal === "string" && newVal.startsWith("***")) return oldVal;
-            return newVal;
-        }
+        const newConfig = req.body || {};
 
-        config.server.port = mergeValue(config.server?.port, newConfig.server?.port, false);
-        config.server.host = mergeValue(config.server?.host, newConfig.server?.host, false);
         config.musicfree.baseUrl = mergeValue(config.musicfree?.baseUrl, newConfig.musicfree?.baseUrl, false);
+        config.musicfree.accessToken = mergeValue(config.musicfree?.accessToken, newConfig.musicfree?.accessToken);
 
         if (config.feishu && newConfig.feishu) {
             config.feishu.enabled = mergeValue(config.feishu.enabled, newConfig.feishu.enabled, false);
             config.feishu.appId = mergeValue(config.feishu.appId, newConfig.feishu.appId, false);
             config.feishu.appSecret = mergeValue(config.feishu.appSecret, newConfig.feishu.appSecret);
+            config.feishu.verificationToken = mergeValue(config.feishu.verificationToken, newConfig.feishu.verificationToken);
+            config.feishu.encryptKey = mergeValue(config.feishu.encryptKey, newConfig.feishu.encryptKey);
             config.feishu.defaultChatId = mergeValue(config.feishu.defaultChatId, newConfig.feishu.defaultChatId, false);
             config.feishu.usePolling = mergeValue(config.feishu.usePolling, newConfig.feishu.usePolling, false);
             config.feishu.notifyOnPlay = mergeValue(config.feishu.notifyOnPlay, newConfig.feishu.notifyOnPlay, false);
@@ -662,7 +748,7 @@ app.post("/api/config", bodyParser.json(), (req, res) => {
 });
 
 // 网页配置面板 - HTML
-app.get("/", (req, res) => {
+app.get("/", requireApiToken, (req, res) => {
     res.type("text/html").send(`
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -840,7 +926,7 @@ function showToast(msg, type = 'success') {
 
 async function loadStatus() {
     try {
-        const r = await fetch('/health');
+        const r = await fetch('/api/status');
         const d = await r.json();
         const carStatus = d.carConnected
             ? '<span class="status ok">✅ 车机已连接</span>'
@@ -946,7 +1032,7 @@ setInterval(loadStatus, 5000);
 // 启动服务器
 // ============================================================
 const serverPort = config.server?.port || 3000;
-const serverHost = config.server?.host || "0.0.0.0";
+const serverHost = config.server?.host || "127.0.0.1";
 
 app.listen = function() { throw new Error("use server.listen instead"); }; // 防止误用
 

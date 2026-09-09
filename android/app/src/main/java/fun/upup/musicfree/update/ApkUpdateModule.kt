@@ -6,9 +6,11 @@ import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.PackageInstaller
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.provider.Settings
 import android.util.Log
 import androidx.core.content.FileProvider
 import com.facebook.react.bridge.Arguments
@@ -19,6 +21,7 @@ import com.facebook.react.bridge.ReactMethod
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -58,6 +61,10 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
     }
 
     private var installReceiverRegistered = false
+    private var downloadJob: Job? = null
+    private var activeCall: okhttp3.Call? = null
+    @Volatile
+    private var downloadGeneration = 0
 
     @Volatile
     private var lastError: String = ""
@@ -113,10 +120,10 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                     fallbackViewInstall()
                 }
             }
-            try {
-                reactContext.unregisterReceiver(this)
-                installReceiverRegistered = false
-            } catch (_: Exception) {}
+            if (status == PackageInstaller.STATUS_PENDING_USER_ACTION) {
+                return
+            }
+            unregisterInstallReceiver()
         }
     }
 
@@ -134,7 +141,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
         val scope = CoroutineScope(Dispatchers.IO)
         scope.launch {
             var lastError: String = ""
-            var bodyStr: String? = null
+            var versionJson: JSONObject? = null
 
             for ((index, url) in urls.withIndex()) {
                 Log.d(TAG, "checkUpdate: try #${index + 1} $url")
@@ -154,7 +161,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                         continue
                     }
 
-                    bodyStr = response.body?.string()
+                    val bodyStr = response.body?.string()
                     response.close()
                     if (bodyStr.isNullOrBlank()) {
                         lastError = "空响应"
@@ -162,6 +169,19 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                         continue
                     }
 
+                    val parsed = try {
+                        JSONObject(bodyStr)
+                    } catch (e: Exception) {
+                        lastError = "响应不是有效 JSON"
+                        Log.w(TAG, "checkUpdate: #${index + 1} invalid JSON", e)
+                        continue
+                    }
+                    if (parsed.optString("version", "").isBlank()) {
+                        lastError = "版本字段缺失"
+                        Log.w(TAG, "checkUpdate: #${index + 1} missing version")
+                        continue
+                    }
+                    versionJson = parsed
                     Log.d(TAG, "checkUpdate: #${index + 1} success, ${bodyStr.length} bytes")
                     break
                 } catch (e: Exception) {
@@ -175,13 +195,12 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                 }
             }
 
-            if (bodyStr == null) {
+            if (versionJson == null) {
                 promise.reject("NETWORK", "检查更新失败（所有源均不可用，最后错误：$lastError）")
                 return@launch
             }
 
             try {
-                val versionJson = JSONObject(bodyStr)
                 val latestVersion = versionJson.optString("version", "")
 
                 if (latestVersion.isEmpty()) {
@@ -248,6 +267,8 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
      */
     @ReactMethod
     fun downloadAndInstall(urlOrJsonList: String, promise: Promise) {
+        cancelActiveDownload()
+        val generation = downloadGeneration
         lastError = ""
         aggregatedFailures.clear()
         isDownloading = true
@@ -269,7 +290,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
 
         Log.d(TAG, "开始下载 (${urls.size} 条链路): $urls")
         // 并发仍使用串行队列：失败后可有序切换，便于按「国内优先」的数组顺序真正落地
-        startMultiSourceHttpDownload(urls, urlIndex = 0)
+        startMultiSourceHttpDownload(urls, urlIndex = 0, generation)
         // 立即返回，由 JS 层轮询 getDownloadProgress 获取进度/网速
         promise.resolve(0.0)
     }
@@ -317,9 +338,15 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
      * - 每条链路独立发出请求、独立计算 contentLength、独立写同一个临时文件（先写 .part，成功后重命名）。
      * - 失败后先记录聚合，再按序启动下一条；若全部失败，统一走事件回调通知 UI 展示明细。
      */
-    private fun startMultiSourceHttpDownload(urls: List<String>, urlIndex: Int) {
+    private fun startMultiSourceHttpDownload(
+        urls: List<String>,
+        urlIndex: Int,
+        generation: Int
+    ) {
+        if (!isDownloadActive(generation)) return
         val scope = CoroutineScope(Dispatchers.IO)
-        scope.launch {
+        downloadJob = scope.launch {
+            if (!isDownloadActive(generation)) return@launch
             if (urlIndex >= urls.size) {
                 // 所有源均不可用
                 isDownloading = false
@@ -353,6 +380,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
             emitEvent("fallback", "正在尝试下载源 #${urlIndex + 1} (${shortLabelOfUrl(url)})")
 
             var response: okhttp3.Response? = null
+            var call: okhttp3.Call? = null
             try {
                 val apkFile = apkFile()
                 if (apkFile.exists()) apkFile.delete()
@@ -370,7 +398,9 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                     .build()
 
                 Log.d(TAG, "[#${urlIndex + 1}] OkHttp 开始请求: $url")
-                response = httpClient.newCall(request).execute()
+                call = httpClient.newCall(request)
+                activeCall = call
+                response = call.execute()
                 if (!response!!.isSuccessful) {
                     val code = response!!.code
                     response.close()
@@ -387,6 +417,7 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                         val buffer = ByteArray(64 * 1024)
                         var written = 0L
                         while (true) {
+                            if (!isDownloadActive(generation)) throw IOException("下载已取消")
                             val read = input.read(buffer)
                             if (read == -1) break
                             output.write(buffer, 0, read)
@@ -406,12 +437,13 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
                 if (totalBytes > 0 && len != totalBytes) {
                     throw IOException("下载文件不完整 ($len/$totalBytes)")
                 }
+                validateApk(apkFile)
 
                 Log.d(TAG, "[#${urlIndex + 1}] OkHttp 下载完成并校验通过, 大小=$len, crc32=${crc.value.toString(16)}")
 
                 downloadFinishedVerified = true
                 reactContext.runOnNativeModulesQueueThread {
-                    if (isDownloading) {
+                    if (isDownloadActive(generation)) {
                         isDownloading = false
                         installApk()
                     }
@@ -419,10 +451,17 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
             } catch (e: Exception) {
                 Log.e(TAG, "[#${urlIndex + 1}] 下载失败", e)
                 try { response?.close() } catch (_: Exception) {}
+                activeCall = null
+                if (!isDownloadActive(generation)) {
+                    return@launch
+                }
                 val reason = e.message ?: "未知错误"
                 aggregatedFailures.add(FailureInfo(urlIndex, url, reason))
-                // 切到下一条：不在 UI 层走 Toast（保持静默），由 JS 层继续观察进度与最终失败事件
-                startMultiSourceHttpDownload(urls, urlIndex + 1)
+                startMultiSourceHttpDownload(urls, urlIndex + 1, generation)
+            } finally {
+                if (activeCall === call) {
+                    activeCall = null
+                }
             }
         }
     }
@@ -431,6 +470,60 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
         reactContext.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS),
         APK_FILE_NAME
     )
+
+    private fun isDownloadActive(generation: Int): Boolean =
+        isDownloading && generation == downloadGeneration
+
+    private fun cancelActiveDownload() {
+        downloadGeneration += 1
+        isDownloading = false
+        activeCall?.cancel()
+        activeCall = null
+        downloadJob?.cancel()
+        downloadJob = null
+    }
+
+    private fun validateApk(file: File) {
+        file.inputStream().use { input ->
+            val signature = ByteArray(4)
+            if (input.read(signature) != signature.size ||
+                signature[0] != 0x50.toByte() ||
+                signature[1] != 0x4b.toByte() ||
+                signature[2] != 0x03.toByte() ||
+                signature[3] != 0x04.toByte()
+            ) {
+                throw IOException("下载内容不是有效 APK")
+            }
+        }
+        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            reactContext.packageManager.getPackageArchiveInfo(
+                file.absolutePath,
+                PackageManager.PackageInfoFlags.of(0)
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            reactContext.packageManager.getPackageArchiveInfo(file.absolutePath, 0)
+        } ?: throw IOException("无法读取 APK 包信息")
+        if (packageInfo.packageName != reactContext.packageName) {
+            throw IOException("APK 包名不匹配")
+        }
+        val archiveVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            packageInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            packageInfo.versionCode.toLong()
+        }
+        val installedInfo = reactContext.packageManager.getPackageInfo(reactContext.packageName, 0)
+        val installedVersionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            installedInfo.longVersionCode
+        } else {
+            @Suppress("DEPRECATION")
+            installedInfo.versionCode.toLong()
+        }
+        if (archiveVersionCode <= installedVersionCode) {
+            throw IOException("APK 版本码未高于当前版本")
+        }
+    }
 
     /**
      * 获取下载状态（进度 / 网速 / 累计字节）
@@ -500,6 +593,21 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
             }
 
             Log.d(TAG, "准备覆盖安装 APK: ${file.absolutePath}, 大小=${file.length()}")
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                !reactContext.packageManager.canRequestPackageInstalls()
+            ) {
+                lastError = "请允许 MusicFree 安装未知应用后重试"
+                val settingsIntent = Intent(
+                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
+                    Uri.parse("package:${reactContext.packageName}")
+                ).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                reactContext.startActivity(settingsIntent)
+                emitEvent("permission", lastError)
+                return
+            }
 
             val packageManager = reactContext.packageManager
             val packageInstaller = packageManager.packageInstaller
@@ -604,6 +712,31 @@ class ApkUpdateModule(private val reactContext: ReactApplicationContext) :
             }
             installReceiverRegistered = true
         }
+    }
+
+    private fun unregisterInstallReceiver() {
+        if (!installReceiverRegistered) return
+        try {
+            reactContext.unregisterReceiver(installResultReceiver)
+        } catch (_: Exception) {
+        } finally {
+            installReceiverRegistered = false
+        }
+    }
+
+    @ReactMethod
+    fun cancelDownload(promise: Promise) {
+        val wasDownloading = isDownloading
+        cancelActiveDownload()
+        downloadFinishedVerified = false
+        currentSpeedBps = 0L
+        promise.resolve(wasDownloading)
+    }
+
+    override fun invalidate() {
+        cancelActiveDownload()
+        unregisterInstallReceiver()
+        super.invalidate()
     }
 
     @ReactMethod

@@ -1,30 +1,18 @@
 {
-  "version": "2.0.9",
+  "version": "2.1.0",
   "changeLog": [
-    "## v2.0.9 国内更新链路修复 + 原生端多源自动回退",
+    "## v2.1.0 更新与稳定性修复",
     "",
-    "- 修复：国内用户「检查更新失败 / 404 / 备用链接也 404」的问题（根因：v2.0.7/v2.0.8 仅推送 tag 到 Gitee 而未走 Release attach_asset 附件上传，导致 releases/download 链接不存在而 404；本版本发布时强制上传 Gitee Release 附件）",
-    "- 重排下载优先级（download[] 按「国内可达优先」排列；Android 原生端已按顺序自动回退，一条不通立即切下一条，全部失败后 Toast 显示每条原因）：",
-    "  1) Gitee Release 官方附件 (国内直链、无需代理、CDN 加速，已通过 API 上传 APK 附件，releases/download/v2.0.9 立即可用)；",
-    "  2) ghproxy.net → GitHub Release 附件加速 (国内 GitHub 代理，GitHub 端 APK 附件已上传)；",
-    "  3) ghps.cc → GitHub Release 附件加速；",
-    "  4) mirror.ghproxy.com → GitHub Release 附件加速；",
-    "  5) kkgithub.com → GitHub Release 附件加速 (替换 github.com)；",
-    "  6) GitHub Releases 原生 (海外直连兜底)；",
-    "  7) Gitee 仓库内 raw 直链 (兜底)；",
-    "  8) jsDelivr CDN 兜底。",
-    "- 原生层（ApkUpdateModule）新增多源自动回退：不再依赖 JS 层只传两条链接，直接按 download[] 顺序依次尝试，每条独立超时/HTTP 失败后立即切到下一条；全部失败后聚合每条错误原因返回，Toast 可直接显示「哪条、为何失败」，避免笼统的「更新失败」。",
-    "- 下载请求额外兼容：User-Agent 同时带上「MusicFree-Update + Dalvik/Linux Android Chrome Mobile」两种标识并启用 Referer，降低 Gitee / 各代理源的反爬拦截概率。",
-    "- 修复：同一行 180ms 重复歌词事件引起「进度不切换」的偶发退化；Android 下载完整性校验升级为「CRC32 不为 0 时校验 + 否则仅长度 > 0」，兼容部分反代未设置 Content-Length 的情况。"
+    "- 修复 GD 音乐台搜索、歌单导入、歌词和播放匹配。",
+    "- 优化原唱识别，降低 Live、翻唱、DJ、Remix、伴奏及纯音乐误匹配。",
+    "- 修复启动初始化、远程连接和更新安装链路。",
+    "- 本版本使用 Debug 构建通道发布。"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.0.9/MusicFree-2.0.9-universal.apk",
-    "https://ghproxy.net/https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.9/MusicFree-2.0.9-universal.apk",
-    "https://ghps.cc/https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.9/MusicFree-2.0.9-universal.apk",
-    "https://mirror.ghproxy.com/https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.9/MusicFree-2.0.9-universal.apk",
-    "https://kkgithub.com/794414-web/MusicFree-Source/releases/download/v2.0.9/MusicFree-2.0.9-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.0.9/MusicFree-2.0.9-universal.apk",
-    "https://gitee.com/ken794414/MusicFree-Source/raw/main/release/MusicFree-2.0.9-universal.apk",
-    "https://cdn.jsdelivr.net/gh/794414-web/MusicFree-Source@main/release/MusicFree-2.0.9-universal.apk"
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.0/MusicFree-2.1.0-universal.apk",
+    "https://ghproxy.net/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.0/MusicFree-2.1.0-universal.apk",
+    "https://ghps.cc/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.0/MusicFree-2.1.0-universal.apk",
+    "https://mirror.ghproxy.com/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.0/MusicFree-2.1.0-universal.apk",
+    "https://kkgithub.com/794414-web/MusicFree-Source/releases/download/v2.1.0/MusicFree-2.1.0-universal.apk"
   ]
 }

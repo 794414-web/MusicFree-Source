@@ -18,12 +18,14 @@ interface IIconButtonProps extends SvgProps {
 
 export default function IconButton(props: IIconButtonProps) {
     const {
+        name,
         sizeType = "normal",
         fontColor = "normal",
         style,
         color,
         onPress,
         accessibilityLabel,
+        ...iconProps
     } = props;
     const colors = useColors();
     const size = iconSizeConst[sizeType];
@@ -37,9 +39,9 @@ export default function IconButton(props: IIconButtonProps) {
     // 均正常响应，与搜索栏、ListItem 一致）。实测 gesture-handler 的 Touchable 在核心
     // ScrollView 内会完全失去点击响应，故此处必须用核心组件。
     if (onPress) {
-        const { onPress: _ignoredOnPress, accessibilityLabel: _ignoredLabel, ...iconProps } = props;
         return (
             <TouchableOpacity
+                accessibilityLabel={accessibilityLabel}
                 onPress={onPress}
                 style={[
                     styles.pressable,
@@ -47,6 +49,7 @@ export default function IconButton(props: IIconButtonProps) {
                 ]}>
                 <Icon
                     {...iconProps}
+                    name={name}
                     color={color ?? colors[colorMap[fontColor]]}
                     style={[{ minWidth: size }, style]}
                     size={size}
@@ -57,7 +60,9 @@ export default function IconButton(props: IIconButtonProps) {
 
     return (
         <Icon
-            {...props}
+            {...iconProps}
+            name={name}
+            accessibilityLabel={accessibilityLabel}
             color={color ?? colors[colorMap[fontColor]]}
             style={[{ minWidth: size }, styles.textCenter, style]}
             size={size}

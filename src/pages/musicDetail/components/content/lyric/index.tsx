@@ -7,8 +7,7 @@ import { fontSizeConst } from "@/constants/uiConst";
 import Loading from "@/components/base/loading";
 import globalStyle from "@/constants/globalStyle";
 import { showPanel } from "@/components/panels/usePanel";
-import TrackPlayer, { useCurrentMusic, useMusicState } from "@/core/trackPlayer";
-import { musicIsPaused } from "@/utils/trackUtils";
+import TrackPlayer, { useCurrentMusic } from "@/core/trackPlayer";
 import delay from "@/utils/delay";
 import DraggingTime from "./draggingTime";
 import LyricItemComponent from "./lyricItem";
@@ -58,7 +57,6 @@ export default function Lyric(props: IProps) {
 
     const [draggingIndex, setDraggingIndex, setDraggingIndexImmi] =
         useDelayFalsy<number | undefined>(undefined, 2000);
-    const musicState = useMusicState();
     const { t } = useI18N();
 
     const [layout, setLayout] = useState<LayoutRectangle>();

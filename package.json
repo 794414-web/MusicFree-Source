@@ -10,7 +10,10 @@
   "scripts": {
     "android": "react-native run-android",
     "ios": "react-native run-ios",
-    "lint": "eslint . --ext .js,.jsx,.ts,.tsx src --fix",
+    "lint": "eslint src --ext .js,.jsx,.ts,.tsx --fix",
+    "lint:check": "eslint src --ext .js,.jsx,.ts,.tsx",
+    "typecheck": "tsc --noEmit --pretty false",
+    "check": "npm run typecheck && npm run lint:check && npm test -- --runInBand",
     "start": "react-native start",
     "clean": "cd ./android && ./gradlew clean",
     "test": "jest",
@@ -125,8 +128,7 @@
   },
   "lint-staged": {
     "src/**/*.{ts,tsx}": [
-      "npm run lint",
-      "git add ."
+      "eslint --fix"
     ]
   },
   "repository": {

@@ -1,4 +1,4 @@
-import { NativeModule, NativeModules, Platform } from 'react-native';
+import { NativeModule, NativeModules, Platform } from "react-native";
 
 /**
  * 悬浮窗原生模块 TypeScript 接口
@@ -47,66 +47,66 @@ const FloatingWindow: IFloatingWindowModule | undefined =
  * 是否支持悬浮窗（仅 Android 且原生模块已注册）
  */
 export function isFloatingWindowSupported(): boolean {
-  return Platform.OS === 'android' && !!FloatingWindow;
+    return Platform.OS === "android" && !!FloatingWindow;
 }
 
 /**
  * 安全调用：若模块未注册，返回 false，避免崩溃
  */
 function safeCall<T>(fn: () => Promise<T>, fallback: T): Promise<T> {
-  if (!FloatingWindow) {
-    return Promise.resolve(fallback);
-  }
-  try {
-    return fn().catch(() => fallback);
-  } catch {
-    return Promise.resolve(fallback);
-  }
+    if (!FloatingWindow) {
+        return Promise.resolve(fallback);
+    }
+    try {
+        return fn().catch(() => fallback);
+    } catch {
+        return Promise.resolve(fallback);
+    }
 }
 
 export const FloatingWindowModule = {
-  isSupported: isFloatingWindowSupported,
+    isSupported: isFloatingWindowSupported,
 
-  checkPermission: (): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.checkPermission(), false),
+    checkPermission: (): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.checkPermission(), false),
 
-  requestPermission: (): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.requestPermission(), false),
+    requestPermission: (): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.requestPermission(), false),
 
-  show: (initialWidth = 0, initialHeight = 0): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.show(initialWidth, initialHeight), false),
+    show: (initialWidth = 0, initialHeight = 0): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.show(initialWidth, initialHeight), false),
 
-  hide: (): Promise<boolean> => safeCall(() => FloatingWindow!.hide(), false),
+    hide: (): Promise<boolean> => safeCall(() => FloatingWindow!.hide(), false),
 
-  destroy: (): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.destroy(), false),
+    destroy: (): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.destroy(), false),
 
-  isVisible: (): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.isVisible(), false),
+    isVisible: (): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.isVisible(), false),
 
-  setLyric: (text: string): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.setLyric(text), false),
+    setLyric: (text: string): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.setLyric(text), false),
 
-  setIsPlaying: (playing: boolean): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.setIsPlaying(playing), false),
+    setIsPlaying: (playing: boolean): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.setIsPlaying(playing), false),
 
-  setSize: (width: number, height: number): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.setSize(width, height), false),
+    setSize: (width: number, height: number): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.setSize(width, height), false),
 
-  setFontSize: (sp: number): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.setFontSize(sp), false),
+    setFontSize: (sp: number): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.setFontSize(sp), false),
 
-  setThemeColors: (
-    backgroundColor: string | null,
-    textColor: string | null,
-  ): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.setThemeColors(backgroundColor, textColor), false),
+    setThemeColors: (
+        backgroundColor: string | null,
+        textColor: string | null,
+    ): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.setThemeColors(backgroundColor, textColor), false),
 
-  setCover: (url: string | null): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.setCover(url), false),
+    setCover: (url: string | null): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.setCover(url), false),
 
-  setCoverVisible: (visible: boolean): Promise<boolean> =>
-    safeCall(() => FloatingWindow!.setCoverVisible(visible), false),
+    setCoverVisible: (visible: boolean): Promise<boolean> =>
+        safeCall(() => FloatingWindow!.setCoverVisible(visible), false),
 };
 
 export default FloatingWindowModule;

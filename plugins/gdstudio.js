@@ -46,22 +46,25 @@ function requestGD(params) {
 }
 
 function formatSearchItem(item) {
-    const source = item.source || "netease";
-    const trackId = String(item.id);
+    var source = item.source || "netease";
+    var trackId = String(item.id);
+    var artists = Array.isArray(item.artist)
+        ? item.artist.join(" / ")
+        : item.artist || "";
+    var album = item.album;
+    if (album && typeof album === "object") album = album.name || "";
     return {
-        // 不同音乐源的 track_id 可能冲突，拼上 source 前缀保证全局唯一
         id: source + "-" + trackId,
         platform: "GD音乐台",
-        title: item.name || "",
-        artist: Array.isArray(item.artist)
-            ? item.artist.join(" / ")
-            : item.artist || "",
-        album: item.album || "",
-        // GD 私有字段，供 getMediaSource / getLyric / getMusicInfo 使用
+        title: item.name || item.title || "",
+        artist: artists,
+        album: album || "",
+        duration: item.duration || item.dt || item.interval || undefined,
+        artwork: item.pic || item.picUrl || undefined,
         _gdSource: source,
         _gdId: trackId,
-        _gdPicId: item.pic_id,
-        _gdLyricId: item.lyric_id || trackId,
+        _gdPicId: item.pic_id || item.picId,
+        _gdLyricId: item.lyric_id || item.lyricId || trackId,
     };
 }
 
@@ -125,9 +128,9 @@ function artistText(item) {
 // 用于搜索排序降权，让原唱版本排在翻唱、钢琴版、DJ版、现场版之前，
 // 避免用户点进纯音乐/翻唱版本导致歌词对不上（甚至无歌词）
 var COVER_PATTERNS = [
-    "版", "live", "现场", "cover", "翻唱", "钢琴", "吉他", "伴奏",
-    "纯音乐", "instrumental", "remix", "dj", "深情", "女声", "男声",
-    "串烧", "电音", "acoustic", "karaoke", "原唱", "正式版", "完整版",
+    "live", "现场", "cover", "翻唱", "钢琴", "吉他", "伴奏",
+    "纯音乐", "instrumental", "remix", "dj", "女声版", "男声版",
+    "串烧", "电音版", "acoustic", "karaoke", "伴唱", "消音版",
 ];
 
 // 判断条目是否为"非原唱版本"（标题含翻唱特征词）
@@ -144,29 +147,44 @@ function isCoverVersion(item) {
 // joox 源曲库以原唱录音为主，对「标题一致且非翻唱」的 joox 结果再加 0.5 分，
 // 让"晴天""夜曲"这类不带歌手的搜索也能把原唱顶到最前；
 // 搜索聚合后按分数排序，让原唱版本排在翻唱/钢琴版/现场版之前
+function artistMatches(candidate, expected) {
+    var actual = normText(artistText(candidate));
+    var target = normText(expected);
+    if (!target) return true;
+    if (!actual) return false;
+    return actual === target || actual.indexOf(target) !== -1 || target.indexOf(actual) !== -1;
+}
+
 function matchScore(item, title, artist) {
     var t = normText(title);
     var a = normText(artist);
     var it = normText(item.title || item.name);
-    var ia = normText(artistText(item));
     var score = 0;
-    if (t && it === t && (!a || ia === a)) {
-        score = 2;
-    } else if (t && it === t) {
-        score = 1;
-    } else {
-        score = 0;
-    }
-    if (score > 0 && isCoverVersion(item)) {
-        score -= 1;
-    }
-    if (
-        score > 0 &&
-        !isCoverVersion(item) &&
-        (item._gdSource === "joox" || item.source === "joox")
-    ) {
+    if (!t || !it) return -50;
+    if (it === t) score += 24;
+    else if (it.indexOf(t) !== -1 || t.indexOf(it) !== -1) score += 8;
+    else return -50;
+    if (a) score += artistMatches(item, artist) ? 24 : -40;
+    if (isCoverVersion(item) && !isCoverVersion({ title: title })) score -= 24;
+    if (!isCoverVersion(item) && (item._gdSource === "joox" || item.source === "joox")) {
         score += 0.5;
     }
+    return score;
+}
+
+function queryScore(item, query) {
+    var q = normText(query);
+    var title = normText(item.title || item.name);
+    var artist = normText(artistText(item));
+    var combined = title + artist;
+    var score = 0;
+    if (!q || !title) return -20;
+    if (q === title) score += 12;
+    else if (q === combined || combined.indexOf(q) !== -1) score += 16;
+    else if (q.indexOf(title) !== -1) score += 10;
+    else if (title.indexOf(q) !== -1) score += 5;
+    if (artist && q.indexOf(artist) !== -1) score += 8;
+    if (isCoverVersion(item)) score -= 10;
     return score;
 }
 
@@ -232,20 +250,27 @@ function parsePlaylistInput(text) {
 // 将歌单接口返回的单曲格式化为 MusicFree 歌曲条目
 // source 为发起歌单的音源，歌单内所有歌曲均按该音源取播放地址 / 歌词
 function formatPlaylistTrack(track, source) {
-    var trackId = String(track.id);
-    var album = track.al || {};
-    var picId = album.pic || album.picUrl || null;
-    var artists = (track.ar || []).map(function (a) { return a.name; }).join(" / ");
+    var trackId = String(track.id || track.songmid || track.hash || track.rid || track.copyrightId || "");
+    if (!trackId) return null;
+    var album = track.al || track.album || {};
+    var albumName = typeof album === "string" ? album : album.name || album.title || "";
+    var picId = album.pic || album.picUrl || track.pic_id || track.picId || track.cover || null;
+    var artistList = track.ar || track.artist || track.singer || track.artists || [];
+    var artists = Array.isArray(artistList)
+        ? artistList.map(function (a) { return typeof a === "string" ? a : a.name || a.title || ""; }).filter(Boolean).join(" / ")
+        : String(artistList || "");
     return {
         id: source + "-" + trackId,
         platform: "GD音乐台",
-        title: track.name || "",
-        artist: artists || "",
-        album: album.name || "",
+        title: track.name || track.title || track.songname || "",
+        artist: artists,
+        album: albumName,
+        duration: track.duration || track.dt || track.interval || undefined,
+        artwork: typeof picId === "string" && /^https?:\/\//.test(picId) ? picId : undefined,
         _gdSource: source,
         _gdId: trackId,
         _gdPicId: picId,
-        _gdLyricId: trackId,
+        _gdLyricId: track.lyric_id || track.lyricId || trackId,
     };
 }
 
@@ -258,14 +283,40 @@ var SOURCE_MEMORY = {};
 function buildSourceCandidates(musicItem) {
     var defaultSource = musicItem._gdSource || "netease";
     var id = String(musicItem._gdId || musicItem.id || "");
+    var memoryKey = defaultSource + ":" + id;
     var candidates = [];
-    var remembered = id ? SOURCE_MEMORY[id] : null;
+    var remembered = id ? SOURCE_MEMORY[memoryKey] : null;
     if (remembered && remembered !== defaultSource) candidates.push(remembered);
     if (candidates.indexOf(defaultSource) === -1) candidates.push(defaultSource);
     STABLE_SOURCES.forEach(function (s) {
         if (candidates.indexOf(s) === -1) candidates.push(s);
     });
-    return { candidates: candidates, id: id, defaultSource: defaultSource };
+    return { candidates: candidates, id: id, defaultSource: defaultSource, memoryKey: memoryKey };
+}
+
+function findTrackInSource(source, musicItem) {
+    if (source === (musicItem._gdSource || "netease") && musicItem._gdId) {
+        return Promise.resolve({
+            id: musicItem._gdId,
+            lyric_id: musicItem._gdLyricId || musicItem._gdId,
+            source: source,
+        });
+    }
+    var title = String(musicItem.title || "").trim();
+    var artist = String(musicItem.artist || "").trim();
+    if (!title) return Promise.resolve(null);
+    var keyword = artist ? title + " " + artist : title;
+    return searchOneSource(source, keyword, 1).then(function (items) {
+        var scored = items.map(function (item) {
+            item.source = item.source || source;
+            return { item: item, score: matchScore(item, title, artist) };
+        }).sort(function (a, b) { return b.score - a.score; });
+        var minimum = artist ? 32 : 20;
+        if (!scored.length || scored[0].score < minimum) return null;
+        if (scored[1] && scored[0].score - scored[1].score < 6 &&
+            !artistMatches(scored[1].item, artist)) return null;
+        return scored[0].item;
+    });
 }
 
 // 歌词兜底：候选源（joox/bilibili/tencent 等）歌词为空时，
@@ -278,59 +329,48 @@ function fallbackSearchLyric(musicItem) {
     }
     var artist = String(musicItem.artist || "").trim();
     var name = artist ? keyword + " " + artist : keyword;
-    // 并发搜索多个稳定源，提高命中原唱的概率（netease 源常有翻唱污染，joox 源质量更稳）
     var tasks = STABLE_SOURCES.map(function (source) {
-        return requestGD({
-            types: "search",
-            source: source,
-            name: name,
-            count: 10,
-            pages: 1,
-        })
-            .then(function (data) {
-                return Array.isArray(data) ? data : [];
-            })
-            .catch(function () {
-                return [];
-            });
+        return searchOneSource(source, name, 1);
     });
     return Promise.all(tasks)
         .then(function (results) {
-            var all = [];
-            results.forEach(function (arr) {
-                all = all.concat(arr);
-            });
-            if (!all.length) {
-                return null;
-            }
-            // 按命中分数排序：优先「标题+歌手」完全一致的原唱
-            var scored = all
-                .map(function (it) {
-                    return { item: it, score: matchScore(it, keyword, artist) };
-                })
-                .sort(function (a, b) {
-                    return b.score - a.score;
+            var scored = [];
+            results.forEach(function (items, index) {
+                items.forEach(function (item) {
+                    item.source = item.source || STABLE_SOURCES[index];
+                    scored.push({
+                        item: item,
+                        score: matchScore(item, keyword, artist),
+                    });
                 });
-            var found = scored[0].item;
-            var nid = found.lyric_id || found.id;
-            var lyrSource = found.source || "netease";
-            return requestGD({
-                types: "lyric",
-                source: lyrSource,
-                id: nid,
-            })
-                .then(function (data2) {
-                    if (data2 && data2.lyric && !data2.lyric.includes("暂无歌词")) {
+            });
+            scored.sort(function (a, b) { return b.score - a.score; });
+            var minimum = artist ? 32 : 20;
+            var candidates = scored.filter(function (entry) {
+                return entry.score >= minimum;
+            }).slice(0, 8);
+            var index = 0;
+            function next() {
+                if (index >= candidates.length) return null;
+                var found = candidates[index].item;
+                index += 1;
+                var nid = found.lyric_id || found.lyricId || found.id;
+                if (!nid) return next();
+                return requestGD({
+                    types: "lyric",
+                    source: found.source || "netease",
+                    id: nid,
+                }).then(function (data) {
+                    if (data && data.lyric && !data.lyric.includes("暂无歌词")) {
                         return {
-                            rawLrc: data2.lyric,
-                            translation: data2.tlyric || undefined,
+                            rawLrc: data.lyric,
+                            translation: data.tlyric || undefined,
                         };
                     }
-                    return null;
-                })
-                .catch(function () {
-                    return null;
-                });
+                    return next();
+                }).catch(next);
+            }
+            return next();
         })
         .catch(function () {
             return null;
@@ -340,10 +380,9 @@ function fallbackSearchLyric(musicItem) {
 module.exports = {
     platform: "GD音乐台",
     author: "GD Studio",
-    version: "1.0.0",
-    srcUrl: BASE_URL,
+    version: "1.1.0",
     cacheControl: "no-cache",
-    supportedSearchType: ["music"],
+    supportedSearchType: ["music", "lyric"],
     primaryKey: ["id"],
     hints: {
         search: [
@@ -361,28 +400,34 @@ module.exports = {
     // 搜索：并发请求多个稳定源并聚合，按「歌名+歌手」命中质量排序，
     // 让原唱版本排在翻唱/钢琴版/现场版之前，避免播放/歌词匹配到错误版本
     search: function (query, page, type) {
-        if (type !== "music") {
+        if (type !== "music" && type !== "lyric") {
             return Promise.resolve({ isEnd: true, data: [] });
         }
-        // 从查询词中拆出歌名与歌手（「歌名 歌手」/「歌名-歌手」格式）
-        var parts = String(query || "").trim().split(/[\s\-—]+/);
-        var title = parts[0] || "";
-        var artist = parts.slice(1).join(" ") || "";
-        const tasks = STABLE_SOURCES.map(function (source) {
-            return searchOneSource(source, query, page);
+        var rawQuery = String(query || "").trim();
+        if (!rawQuery) return Promise.resolve({ isEnd: true, data: [] });
+        var pageNumber = Math.max(1, Number(page) || 1);
+        var tasks = STABLE_SOURCES.map(function (source) {
+            return searchOneSource(source, rawQuery, pageNumber);
         });
         return Promise.all(tasks).then(function (results) {
-            let list = [];
+            var list = [];
+            var hasFullPage = false;
             results.forEach(function (arr) {
+                if (arr.length >= 20) hasFullPage = true;
                 list = list.concat(arr);
             });
-            const mapped = list.map(formatSearchItem);
-            // 稳定排序：完全命中(标题+歌手) > 仅标题命中 > 其他；同分保持原始顺序
+            var seen = {};
+            var mapped = list.map(formatSearchItem).filter(function (item) {
+                var key = item._gdSource + ":" + item._gdId;
+                if (seen[key]) return false;
+                seen[key] = true;
+                return true;
+            });
             mapped.sort(function (a, b) {
-                return matchScore(b, title, artist) - matchScore(a, title, artist);
+                return queryScore(b, rawQuery) - queryScore(a, rawQuery);
             });
             return {
-                isEnd: true,
+                isEnd: !hasFullPage,
                 data: mapped,
             };
         });
@@ -394,37 +439,29 @@ module.exports = {
         var srcInfo = buildSourceCandidates(musicItem);
         var brList = [QUALITY_BR[quality] || 320, 320];
         var candidateIdx = 0;
-        var brIdx = 0;
         function nextCandidate() {
-            if (candidateIdx >= srcInfo.candidates.length) {
-                return Promise.resolve(null);
-            }
+            if (candidateIdx >= srcInfo.candidates.length) return Promise.resolve(null);
             var source = srcInfo.candidates[candidateIdx];
-            var id = musicItem._gdId || musicItem.id;
-            if (brIdx >= brList.length) {
-                candidateIdx += 1;
-                brIdx = 0;
-                return nextCandidate();
-            }
-            var br = brList[brIdx];
-            brIdx += 1;
-            return requestGD({
-                types: "url",
-                source: source,
-                id: id,
-                br: br,
-            })
-                .then(function (data) {
-                    if (data && data.url) {
-                        // 记录成功源，下次播放直接使用
-                        if (srcInfo.id) SOURCE_MEMORY[srcInfo.id] = source;
-                        return { url: data.url, _gdUsedSource: source };
-                    }
-                    return nextCandidate();
-                })
-                .catch(function () {
-                    return nextCandidate();
-                });
+            candidateIdx += 1;
+            return findTrackInSource(source, musicItem).then(function (track) {
+                if (!track || !track.id) return nextCandidate();
+                var brIdx = 0;
+                function nextQuality() {
+                    if (brIdx >= brList.length) return nextCandidate();
+                    var br = brList[brIdx];
+                    brIdx += 1;
+                    return requestGD({ types: "url", source: source, id: track.id, br: br })
+                        .then(function (data) {
+                            if (data && data.url) {
+                                if (srcInfo.id) SOURCE_MEMORY[srcInfo.memoryKey] = source;
+                                return { url: data.url };
+                            }
+                            return nextQuality();
+                        })
+                        .catch(nextQuality);
+                }
+                return nextQuality();
+            }).catch(nextCandidate);
         }
         return nextCandidate();
     },
@@ -435,22 +472,22 @@ module.exports = {
     // 并发搜索稳定源取原唱歌词
     getLyric: function (musicItem) {
         var srcInfo = buildSourceCandidates(musicItem);
-        var id = musicItem._gdLyricId || musicItem._gdId || musicItem.id;
         var candidateIdx = 0;
         function nextCandidate() {
             if (candidateIdx >= srcInfo.candidates.length) {
-                // 兜底：搜索同名歌曲取歌词
                 return fallbackSearchLyric(musicItem);
             }
             var source = srcInfo.candidates[candidateIdx];
             candidateIdx += 1;
-            return requestGD({
-                types: "lyric",
-                source: source,
-                id: id,
-            })
-                .then(function (data) {
-                    // 过滤「暂无歌词」等占位文本，避免把无效歌词当作有效结果
+            return findTrackInSource(source, musicItem).then(function (track) {
+                if (!track) return nextCandidate();
+                var lyricId = track.lyric_id || track.lyricId || track.id;
+                if (!lyricId) return nextCandidate();
+                return requestGD({
+                    types: "lyric",
+                    source: source,
+                    id: lyricId,
+                }).then(function (data) {
                     if (data && data.lyric && !data.lyric.includes("暂无歌词")) {
                         return {
                             rawLrc: data.lyric,
@@ -458,10 +495,8 @@ module.exports = {
                         };
                     }
                     return nextCandidate();
-                })
-                .catch(function () {
-                    return nextCandidate();
-                });
+                }).catch(nextCandidate);
+            }).catch(nextCandidate);
         }
         return nextCandidate();
     },
@@ -495,24 +530,55 @@ module.exports = {
     importMusicSheet: function (urlLike) {
         var parsed = parsePlaylistInput(urlLike);
         if (!parsed) return Promise.resolve(null);
-        return requestGD({
-            types: "playlist",
-            source: parsed.source,
-            id: parsed.id,
-            count: 50,
-            pages: 1,
-        })
-            .then(function (data) {
-                if (!data || !data.playlist || !Array.isArray(data.playlist.tracks)) {
-                    return [];
+        var page = 1;
+        var count = 100;
+        var maxPages = 20;
+        var tracks = [];
+        var seenTracks = {};
+        var seenPages = {};
+        function nextPage() {
+            return requestGD({
+                types: "playlist",
+                source: parsed.source,
+                id: parsed.id,
+                count: count,
+                pages: page,
+            }).then(function (data) {
+                var pageTracks = [];
+                if (data && data.playlist && Array.isArray(data.playlist.tracks)) {
+                    pageTracks = data.playlist.tracks;
+                } else if (data && Array.isArray(data.tracks)) {
+                    pageTracks = data.tracks;
+                } else if (Array.isArray(data)) {
+                    pageTracks = data;
                 }
-                return data.playlist.tracks
-                    .map(function (track) {
-                        return formatPlaylistTrack(track, parsed.source);
-                    });
-            })
-            .catch(function () {
-                return null;
+                if (!pageTracks.length) return tracks;
+                var pageKeys = [];
+                pageTracks.forEach(function (track) {
+                    var formatted = formatPlaylistTrack(track, parsed.source);
+                    if (!formatted) return;
+                    var key = formatted._gdSource + ":" + formatted._gdId;
+                    pageKeys.push(key);
+                    if (seenTracks[key]) return;
+                    seenTracks[key] = true;
+                    tracks.push(formatted);
+                });
+                var pageSignature = pageKeys.join("|");
+                if (!pageSignature || seenPages[pageSignature]) return tracks;
+                seenPages[pageSignature] = true;
+                var total = data && data.playlist && Number(data.playlist.trackCount || data.playlist.total || 0);
+                var hasMore = total > 0 ? tracks.length < total : pageTracks.length >= count;
+                if (hasMore && page < maxPages) {
+                    page += 1;
+                    return nextPage();
+                }
+                return tracks;
             });
+        }
+        return nextPage().then(function (result) {
+            return result.length ? result : null;
+        }).catch(function () {
+            return tracks.length ? tracks : null;
+        });
     },
 };

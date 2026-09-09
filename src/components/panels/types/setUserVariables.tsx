@@ -12,7 +12,6 @@ import { hidePanel } from "../usePanel";
 import ListItem from "@/components/base/listItem";
 import globalStyle from "@/constants/globalStyle";
 import PanelHeader from "../base/panelHeader";
-import { useI18N } from "@/core/i18n";
 
 interface IUserVariablesProps {
     title?: string;
@@ -26,7 +25,6 @@ export default function SetUserVariables(props: IUserVariablesProps) {
     const { onOk, onCancel, variables, initValues = {}, title } = props;
 
     const colors = useColors();
-    const { t } = useI18N();
 
     const resultRef = useRef({ ...initValues });
     const [values, setValues] = useState<Record<string, string>>({ ...initValues });

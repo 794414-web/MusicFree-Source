@@ -358,7 +358,7 @@ class PluginManager implements IPluginManager, IInjectable {
             devLog("error", "URL安装插件失败", e, e?.message);
             errorLog("URL安装插件失败", e);
 
-            if (e?.response?.statusCode === 404) {
+            if (e?.response?.status === 404) {
                 return {
                     success: false,
                     message: "插件不存在，请联系插件作者",
@@ -495,7 +495,7 @@ class PluginManager implements IPluginManager, IInjectable {
         if (aIsGD !== bIsGD) return aIsGD - bIsGD;
         const ao = order[aName] ?? Infinity;
         const bo = order[bName] ?? Infinity;
-        return ao - bo < 0 ? -1 : 1;
+        return ao - bo;
     }
 
     /**

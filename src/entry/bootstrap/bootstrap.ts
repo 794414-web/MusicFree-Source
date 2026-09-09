@@ -2,7 +2,7 @@ import "react-native-get-random-values";
 
 import { getCurrentDialog, showDialog } from "@/components/dialogs/useDialog.ts";
 import cacheCleanup from "@/utils/periodicCacheCleanup";
-import { startMemoryMonitor, updateCleanupConfig, getCleanupConfig } from "@/utils/memoryMonitor";
+import { startMemoryMonitor, updateCleanupConfig } from "@/utils/memoryMonitor";
 import { ImgAsset } from "@/constants/assetsConst";
 import { emptyFunction, localPluginHash, supportLocalMediaType } from "@/constants/commonConst";
 import pathConst from "@/constants/pathConst";
@@ -37,7 +37,7 @@ import getOrCreateMMKV from "@/utils/getOrCreateMMKV";
  * 这些 js 文件位于 android/app/src/main/assets/plugins/
  * 首次启动或版本升级时自动复制到插件目录
  */
-const BUILTIN_PLUGINS_VERSION = "10";
+const BUILTIN_PLUGINS_VERSION = "11";
 const BUILTIN_PLUGIN_FILES: string[] = [
     "gdstudio.js",
     "qishui.js",
@@ -63,6 +63,26 @@ const BUILTIN_PLUGIN_ALL_FILES: string[] = [
  * 生产模式下只会执行一次，该标志恒为 false→true 单次转换。
  */
 let linkingListenerRegistered = false;
+let downloaderEventsBound = false;
+let bootstrapGeneration = 0;
+let bootstrapPromise: Promise<void> | null = null;
+let bootstrapSucceeded = false;
+
+function assertBootstrapActive(generation: number) {
+    if (generation !== bootstrapGeneration) {
+        throw new Error("bootstrap 已取消");
+    }
+}
+
+async function runBootstrapStep<T>(
+    generation: number,
+    step: () => Promise<T> | T,
+): Promise<T> {
+    assertBootstrapActive(generation);
+    const result = await step();
+    assertBootstrapActive(generation);
+    return result;
+}
 
 
 // 依赖管理
@@ -156,66 +176,74 @@ async function safeStep<T>(
     }
 }
 
-async function bootstrapImpl() {
-    // 尽早注册全局错误处理器（在一切初始化之前），
-    // 确保启动阶段的任何未捕获异常/致命错误都能写入崩溃日志，便于定位闪退
+async function bootstrapImpl(generation: number) {
+    assertBootstrapActive(generation);
     setupGlobalErrorHandler();
 
-    await SplashScreen.preventAutoHideAsync()
-        .then(result =>
-            console.log(
-                `SplashScreen.preventAutoHideAsync() succeeded: ${result}`,
-            ),
-        )
-        .catch(console.warn); // it's good to explicitly catch and inspect any error
+    await runBootstrapStep(generation, () =>
+        SplashScreen.preventAutoHideAsync()
+            .then(result =>
+                console.log(
+                    `SplashScreen.preventAutoHideAsync() succeeded: ${result}`,
+                ),
+            )
+            .catch(console.warn),
+    );
     const logger = perfLogger();
     // 1. 检查权限
     if (Platform.OS === "android" && Platform.Version >= 30) {
-        const hasPermission = await NativeUtils.checkStoragePermission();
+        const hasPermission = await runBootstrapStep(
+            generation,
+            () => NativeUtils.checkStoragePermission(),
+        );
         if (
             !hasPermission &&
             !PersistStatus.get("app.skipBootstrapStorageDialog")
         ) {
+            assertBootstrapActive(generation);
             showDialog("CheckStorage");
         }
     } else {
         const [readStoragePermission, writeStoragePermission] =
-            await Promise.all([
-                check(PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE),
-                check(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE),
-            ]);
+            await runBootstrapStep(generation, () =>
+                Promise.all([
+                    check(PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE),
+                    check(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE),
+                ]),
+            );
         if (
             !(
                 readStoragePermission === "granted" &&
                 writeStoragePermission === "granted"
             )
         ) {
-            await request(PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE);
-            await request(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
+            await runBootstrapStep(generation, async () => {
+                await request(PERMISSIONS.ANDROID.READ_EXTERNAL_STORAGE);
+                assertBootstrapActive(generation);
+                await request(PERMISSIONS.ANDROID.WRITE_EXTERNAL_STORAGE);
+            });
         }
     }
+    assertBootstrapActive(generation);
     logger.mark("权限检查完成");
 
-    // 2. 数据初始化
-    /** 初始化路径 */
-    await setupFolder();
+    await runBootstrapStep(generation, setupFolder);
     trace("文件夹初始化完成");
     logger.mark("文件夹初始化完成");
 
-
-
-    // 加载配置
-    await Promise.all([
-        Config.setup().then(() => {
-            logger.mark("Config");
-        }),
-        MusicSheet.setup().then(() => {
-            logger.mark("MusicSheet");
-        }),
-        musicHistory.setup().then(() => {
-            logger.mark("musicHistory");
-        }),
-    ]);
+    await runBootstrapStep(generation, () =>
+        Promise.all([
+            Config.setup().then(() => {
+                logger.mark("Config");
+            }),
+            MusicSheet.setup().then(() => {
+                logger.mark("MusicSheet");
+            }),
+            musicHistory.setup().then(() => {
+                logger.mark("musicHistory");
+            }),
+        ]),
+    );
     trace("配置初始化完成");
     logger.mark("配置初始化完成");
 
@@ -225,25 +253,27 @@ async function bootstrapImpl() {
     // 初始化内存自动清理配置
     initMemoryCleanupConfig();
 
-    // 安装内置音源（在插件加载之前）
-    await safeStep("安装内置音源", setupBuiltinPlugins);
+    await runBootstrapStep(generation, () =>
+        safeStep("安装内置音源", setupBuiltinPlugins),
+    );
 
-    // 加载插件
-    await PluginManager.setup();
+    await runBootstrapStep(generation, () => PluginManager.setup());
     logger.mark("插件初始化完成");
     trace("插件初始化完成");
 
-    // 设置默认插件订阅（车载版专用）
-    await safeStep("设置默认插件订阅", setupDefaultPluginSubscribe);
+    await runBootstrapStep(generation, () =>
+        safeStep("设置默认插件订阅", setupDefaultPluginSubscribe),
+    );
 
-    // 启动定期缓存清理
+    assertBootstrapActive(generation);
     await safeStep("启动缓存清理", () => cacheCleanup.initCacheCleanup());
 
-    // 启动内存监控（每 2 分钟采样一次，更快发现内存问题）
+    assertBootstrapActive(generation);
     await safeStep("启动内存监控", () => startMemoryMonitor(2 * 60 * 1000));
 
+    assertBootstrapActive(generation);
     await initTrackPlayer(logger).catch(err => {
-        // 初始化播放器出错，延迟初始化
+        assertBootstrapActive(generation);
         const bootstrapState = getDefaultStore().get(bootstrapAtom);
 
         if (bootstrapState.state === "Loading") {
@@ -254,7 +284,9 @@ async function bootstrapImpl() {
         }
     });
 
+    assertBootstrapActive(generation);
     await LocalMusicSheet.setup();
+    assertBootstrapActive(generation);
     trace("本地音乐初始化完成");
     logger.mark("本地音乐初始化完成");
 
@@ -262,7 +294,8 @@ async function bootstrapImpl() {
     trace("主题初始化完成");
     logger.mark("主题初始化完成");
 
-    extraMakeup();
+    await extraMakeup(generation);
+    assertBootstrapActive(generation);
 
     i18n.setup();
     logger.mark("语言模块初始化完成");
@@ -278,9 +311,9 @@ async function setupFolder() {
         checkAndCreateDir(pathConst.lrcCachePath),
         checkAndCreateDir(pathConst.downloadCachePath),
         checkAndCreateDir(pathConst.localLrcPath),
-        checkAndCreateDir(pathConst.downloadPath).then(() => {
-            checkAndCreateDir(pathConst.downloadMusicPath);
-        }),
+        checkAndCreateDir(pathConst.downloadPath).then(() =>
+            checkAndCreateDir(pathConst.downloadMusicPath),
+        ),
     ]);
 }
 
@@ -348,8 +381,8 @@ export async function initTrackPlayer(logger?: IPerfLogger) {
 
 
 /** 不需要阻塞的 */
-async function extraMakeup() {
-    // 自动更新
+async function extraMakeup(generation: number) {
+    assertBootstrapActive(generation);
     try {
         if (Config.getConfig("basic.autoUpdatePlugin")) {
             const lastUpdated = PersistStatus.get("app.pluginUpdateTime") || 0;
@@ -412,7 +445,7 @@ async function extraMakeup() {
         } catch { }
     }
 
-    // 开启监听（DEV 模式热重载去重，避免重复注册导致同一 URL 触发多次处理）
+    assertBootstrapActive(generation);
     if (!linkingListenerRegistered) {
         linkingListenerRegistered = true;
         Linking.addEventListener("url", data => {
@@ -422,33 +455,38 @@ async function extraMakeup() {
         });
     }
     const initUrl = await Linking.getInitialURL();
+    assertBootstrapActive(generation);
     if (initUrl) {
-        handleLinkingUrl(initUrl);
+        await handleLinkingUrl(initUrl);
     }
 
+    assertBootstrapActive(generation);
     if (Config.getConfig("basic.autoPlayWhenAppStart")) {
         TrackPlayer.play();
     }
 
-    // 启动远程控制服务（车载AI控制）
-    // 延迟 2 秒启动，确保 TrackPlayer 完全初始化后再接受 WS 命令
     try {
         const remoteConfig = RemoteControlService.loadConfig();
         if (remoteConfig.enabled && remoteConfig.wsUrl) {
-            setTimeout(() => {
-                RemoteControlService.start().catch(e => {
-                    console.error("启动远程控制服务失败:", e);
-                });
-            }, 2000);
+            await new Promise<void>(resolve => {
+                setTimeout(resolve, 2000);
+            });
+            assertBootstrapActive(generation);
+            await RemoteControlService.start();
         }
     } catch (e) {
-        console.error("启动远程控制服务失败:", e);
+        if (generation === bootstrapGeneration) {
+            console.error("启动远程控制服务失败:", e);
+        }
     }
 }
 
-
 function bindEvents() {
-    // 下载事件
+    if (downloaderEventsBound) {
+        return;
+    }
+    downloaderEventsBound = true;
+
     downloader.on(DownloaderEvent.DownloadError, (reason) => {
         if (reason === DownloadFailReason.NetworkOffline) {
             Toast.warn("当前无网络连接，请等待网络恢复后重试");
@@ -558,46 +596,68 @@ async function setupDefaultPluginSubscribe() {
     }
 }
 
-export default async function () {
+async function runBootstrap() {
+    const generation = ++bootstrapGeneration;
+    let timeoutId: ReturnType<typeof setTimeout> | undefined;
+    let timedOut = false;
+
     try {
         getDefaultStore().set(bootstrapAtom, {
-            "state": "Loading",
+            state: "Loading",
         });
-        // 给整个 bootstrap 加 20 秒超时保护
-        // 某些步骤（如 readDir 在无 storage 权限时）可能挂死，
-        // 不加超时会导致 SplashScreen 永不隐藏，应用卡在图标界面
+
         await Promise.race([
-            bootstrapImpl(),
-            new Promise<void>((_, reject) =>
-                setTimeout(
-                    () => reject(new Error("bootstrap 超时（20s）")),
-                    20000,
-                ),
-            ),
+            bootstrapImpl(generation),
+            new Promise<void>((_, reject) => {
+                timeoutId = setTimeout(() => {
+                    timedOut = true;
+                    if (generation === bootstrapGeneration) {
+                        bootstrapGeneration++;
+                    }
+                    reject(new Error("bootstrap 超时（20s）"));
+                }, 20000);
+            }),
         ]);
+
+        assertBootstrapActive(generation);
         bindEvents();
+        bootstrapSucceeded = true;
         getDefaultStore().set(bootstrapAtom, {
-            "state": "Done",
+            state: "Done",
         });
     } catch (e: any) {
-        crashLog("初始化出错", {
-            message: e?.message ?? String(e),
-            stack: e?.stack,
-        });
-        if (getDefaultStore().get(bootstrapAtom).state === "Loading") {
-            getDefaultStore().set(bootstrapAtom, {
-                state: "Fatal",
-                reason: e,
+        if (timedOut || generation === bootstrapGeneration) {
+            crashLog("初始化出错", {
+                message: e?.message ?? String(e),
+                stack: e?.stack,
             });
+            if (getDefaultStore().get(bootstrapAtom).state === "Loading") {
+                getDefaultStore().set(bootstrapAtom, {
+                    state: "Fatal",
+                    reason: e,
+                });
+            }
         }
     } finally {
-        // 无论成功/失败/超时，都必须隐藏 splash
-        // 否则应用会卡在启动图标界面无法使用
-        console.log("HIDE");
+        if (timeoutId !== undefined) {
+            clearTimeout(timeoutId);
+        }
         try {
             await SplashScreen.hideAsync();
         } catch (e) {
             console.warn("SplashScreen.hideAsync failed:", e);
         }
     }
+}
+
+export default function () {
+    if (bootstrapSucceeded) {
+        return Promise.resolve();
+    }
+    if (!bootstrapPromise) {
+        bootstrapPromise = runBootstrap().finally(() => {
+            bootstrapPromise = null;
+        });
+    }
+    return bootstrapPromise;
 }

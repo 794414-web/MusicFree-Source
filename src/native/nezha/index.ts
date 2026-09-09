@@ -1,4 +1,4 @@
-import { NativeModule, NativeModules, Platform, DeviceEventEmitter } from 'react-native';
+import { NativeModule, NativeModules, Platform, DeviceEventEmitter } from "react-native";
 
 /**
  * 哪吒车机适配模块 TypeScript 接口
@@ -26,15 +26,15 @@ interface INezhaThemeModule extends NativeModule {
 const NezhaThemeNative: INezhaThemeModule | undefined = NativeModules.NezhaTheme;
 
 function isNezhaThemeSupported(): boolean {
-    return Platform.OS === 'android' && !!NezhaThemeNative;
+    return Platform.OS === "android" && !!NezhaThemeNative;
 }
 
 export const NezhaThemeModule = {
     isSupported: isNezhaThemeSupported,
 
     getThemeMode: (): Promise<string> => {
-        if (!NezhaThemeNative) return Promise.resolve('day');
-        return NezhaThemeNative.getThemeMode().catch(() => 'day');
+        if (!NezhaThemeNative) return Promise.resolve("day");
+        return NezhaThemeNative.getThemeMode().catch(() => "day");
     },
 
     startListening: (): Promise<boolean> => {
@@ -62,7 +62,7 @@ interface ISteeringWheelModule extends NativeModule {
 const SteeringWheelNative: ISteeringWheelModule | undefined = NativeModules.SteeringWheel;
 
 function isSteeringWheelSupported(): boolean {
-    return Platform.OS === 'android' && !!SteeringWheelNative;
+    return Platform.OS === "android" && !!SteeringWheelNative;
 }
 
 export const SteeringWheelModule = {
@@ -97,7 +97,7 @@ interface DisplayInfo {
     width: number;
     height: number;
     isDefault: boolean;
-    role: 'main' | 'vice' | 'hud' | 'unknown';
+    role: "main" | "vice" | "hud" | "unknown";
 }
 
 interface INezhaMultiDisplayModule extends NativeModule {
@@ -111,7 +111,7 @@ interface INezhaMultiDisplayModule extends NativeModule {
 const NezhaMultiDisplayNative: INezhaMultiDisplayModule | undefined = NativeModules.NezhaMultiDisplay;
 
 function isMultiDisplaySupported(): boolean {
-    return Platform.OS === 'android' && !!NezhaMultiDisplayNative;
+    return Platform.OS === "android" && !!NezhaMultiDisplayNative;
 }
 
 export const NezhaMultiDisplayModule = {
@@ -148,7 +148,7 @@ interface IFullscreenNotificationModule extends NativeModule {
 const FullscreenNotificationNative: IFullscreenNotificationModule | undefined = NativeModules.FullscreenNotification;
 
 function isFullscreenNotificationSupported(): boolean {
-    return Platform.OS === 'android' && !!FullscreenNotificationNative;
+    return Platform.OS === "android" && !!FullscreenNotificationNative;
 }
 
 export const FullscreenNotificationModule = {
@@ -165,13 +165,13 @@ export const FullscreenNotificationModule = {
     },
 
     getCurrentState: (): Promise<string> => {
-        if (!FullscreenNotificationNative) return Promise.resolve('off');
-        return FullscreenNotificationNative.getCurrentState().catch(() => 'off');
+        if (!FullscreenNotificationNative) return Promise.resolve("off");
+        return FullscreenNotificationNative.getCurrentState().catch(() => "off");
     },
 
     getScreenState: (): Promise<string> => {
-        if (!FullscreenNotificationNative) return Promise.resolve('on');
-        return FullscreenNotificationNative.getScreenState().catch(() => 'on');
+        if (!FullscreenNotificationNative) return Promise.resolve("on");
+        return FullscreenNotificationNative.getScreenState().catch(() => "on");
     },
 };
 
@@ -179,26 +179,26 @@ export const FullscreenNotificationModule = {
 
 /** 主题变化事件参数 */
 export interface NezhaThemeEvent {
-    mode: 'night' | 'day';
+    mode: "night" | "day";
     isNight: boolean;
 }
 
 /** 方向盘按键事件参数 */
 export interface SteeringWheelKeyEvent {
     keyCode: number;
-    action: 'previous' | 'next' | 'playPause' | 'play' | 'pause' | 'volumeUp' | 'volumeDown' | string;
+    action: "previous" | "next" | "playPause" | "play" | "pause" | "volumeUp" | "volumeDown" | string;
 }
 
 /** 全屏通知状态事件参数 */
 export interface FullscreenStateEvent {
-    state: 'on' | 'off';
-    action: 'enterFullscreen' | 'exitFullscreen';
+    state: "on" | "off";
+    action: "enterFullscreen" | "exitFullscreen";
 }
 
 /** 屏幕状态事件参数 */
 export interface ScreenStateEvent {
-    state: 'on' | 'off';
-    action: 'screenOn' | 'screenOff';
+    state: "on" | "off";
+    action: "screenOn" | "screenOff";
 }
 
 // ======================== 事件订阅辅助 ========================
@@ -208,7 +208,7 @@ export interface ScreenStateEvent {
  * @returns 取消监听函数
  */
 export function onNezhaThemeChange(callback: (event: NezhaThemeEvent) => void): () => void {
-    const subscription = DeviceEventEmitter.addListener('nezhaThemeChanged', callback);
+    const subscription = DeviceEventEmitter.addListener("nezhaThemeChanged", callback);
     return () => subscription.remove();
 }
 
@@ -217,7 +217,7 @@ export function onNezhaThemeChange(callback: (event: NezhaThemeEvent) => void): 
  * @returns 取消监听函数
  */
 export function onSteeringWheelKey(callback: (event: SteeringWheelKeyEvent) => void): () => void {
-    const subscription = DeviceEventEmitter.addListener('steeringWheelMediaKey', callback);
+    const subscription = DeviceEventEmitter.addListener("steeringWheelMediaKey", callback);
     return () => subscription.remove();
 }
 
@@ -226,7 +226,7 @@ export function onSteeringWheelKey(callback: (event: SteeringWheelKeyEvent) => v
  * @returns 取消监听函数
  */
 export function onFullscreenStateChange(callback: (event: FullscreenStateEvent) => void): () => void {
-    const subscription = DeviceEventEmitter.addListener('fullscreenStateChanged', callback);
+    const subscription = DeviceEventEmitter.addListener("fullscreenStateChanged", callback);
     return () => subscription.remove();
 }
 
@@ -235,6 +235,6 @@ export function onFullscreenStateChange(callback: (event: FullscreenStateEvent) 
  * @returns 取消监听函数
  */
 export function onScreenStateChange(callback: (event: ScreenStateEvent) => void): () => void {
-    const subscription = DeviceEventEmitter.addListener('screenStateChanged', callback);
+    const subscription = DeviceEventEmitter.addListener("screenStateChanged", callback);
     return () => subscription.remove();
 }

@@ -8,7 +8,6 @@ import NoPlugin from "@/components/base/noPlugin";
 import { showDialog } from "@/components/dialogs/useDialog";
 import globalStyle from "@/constants/globalStyle";
 import PluginManager from "@/core/pluginManager";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
 import PanelBase from "../base/panelBase";
 import PanelHeader from "../base/panelHeader";
 import { showPanel } from "../usePanel";
@@ -17,8 +16,6 @@ import { useI18N } from "@/core/i18n";
 export default function ImportMusicSheet() {
     const validPlugins = PluginManager.getSortedPluginsWithAbility("importMusicSheet");
     const { t } = useI18N();
-
-    const safeAreaInsets = useSafeAreaInsets();
 
     /**
      * 统一歌单导入：自动识别歌单来源。

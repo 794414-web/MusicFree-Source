@@ -1,5 +1,5 @@
-import { NativeModule, NativeModules, Platform } from 'react-native';
-import getOrCreateMMKV from '@/utils/getOrCreateMMKV';
+import { NativeModule, NativeModules, Platform } from "react-native";
+import getOrCreateMMKV from "@/utils/getOrCreateMMKV";
 
 /**
  * NetA 哪吒互联 - 元数据 API TypeScript 桥接
@@ -44,11 +44,11 @@ export interface NetACoverResponse {
 const NetAMetadataNative: INetAMetadataModule | undefined = NativeModules.NetAMetadata;
 
 function isNetASupported(): boolean {
-    return Platform.OS === 'android' && !!NetAMetadataNative;
+    return Platform.OS === "android" && !!NetAMetadataNative;
 }
 
 // 封面 URL 缓存，避免重复请求
-const coverCacheStore = getOrCreateMMKV('NetA.CoverCache');
+const coverCacheStore = getOrCreateMMKV("NetA.CoverCache");
 
 // 内存缓存
 const coverCache = new Map<string, { url: string | null; ts: number }>();
@@ -102,7 +102,7 @@ export const NetAMetadata = {
         }
         try {
             const result = await NetAMetadataNative.healthCheck();
-            return result?.status === 'ok';
+            return result?.status === "ok";
         } catch {
             return false;
         }
@@ -174,7 +174,7 @@ export const NetAMetadata = {
 
         // 否则从 NetA 获取
         const title = musicItem.alias || musicItem.title;
-        const artist = musicItem.artist || '';
+        const artist = musicItem.artist || "";
         return this.getCover(title, artist);
     },
 
