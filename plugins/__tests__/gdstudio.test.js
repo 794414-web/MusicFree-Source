@@ -179,8 +179,41 @@ describe("GD音乐台", () => {
         expect(result.url).toBe("https://example.com/joox.mp3");
     });
 
+    test("QQ歌单歌手名错误时回退到仅歌名搜索取原唱", async () => {
+        axios.get.mockImplementation((url, config) => {
+            const params = config.params;
+            // 第一轮：「逆战 赖志锐」搜索无匹配（QQ 歌单把原唱标成了翻唱歌手）
+            if (params.types === "search" && params.name === "逆战 赖志锐") {
+                return response([]);
+            }
+            // 回退：仅「逆战」搜索，返回原唱 + 翻唱，应选中原唱
+            if (params.types === "search" && params.name === "逆战") {
+                return response([
+                    { id: "cover-id", name: "逆战 (Live)", artist: ["某翻唱"], source: "netease" },
+                    { id: "original-id", name: "逆战", artist: ["张杰"], source: "netease" },
+                ]);
+            }
+            if (params.types === "url" && params.source === "netease") {
+                return response({ url: "https://example.com/nizhan.mp3", br: 320 });
+            }
+            return response([]);
+        });
+
+        const result = await plugin.getMediaSource(
+            {
+                title: "逆战",
+                artist: "赖志锐",
+                _gdSource: "qqmeta",
+                _gdId: "",
+                _gdLyricId: "",
+            },
+            "standard",
+        );
+
+        expect(result.url).toBe("https://example.com/nizhan.mp3");
+    });
+
     test("导入 QQ 音乐歌单返回曲目列表", async () => {
-        // QQ 歌单走 axios.post
         axios.post.mockImplementation((url, body) => {
             expect(url).toBe("https://u.y.qq.com/cgi-bin/musicu.fcg");
             return Promise.resolve({

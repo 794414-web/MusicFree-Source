@@ -502,6 +502,8 @@ function importQQPlaylist(id) {
 var SOURCE_MEMORY = {};
 
 // 构建候选音源顺序：记忆源 -> 默认源 -> 其他稳定源
+// 对于 QQ 歌单导入的 qqmeta 条目（无 GD 原始 ID），其默认源不是真实 GD 源，
+// 不能直接搜索，故跳过，直接从稳定源开始匹配。
 function buildSourceCandidates(musicItem) {
     var defaultSource = musicItem._gdSource || "netease";
     var id = String(musicItem._gdId || musicItem.id || "");
@@ -509,11 +511,34 @@ function buildSourceCandidates(musicItem) {
     var candidates = [];
     var remembered = id ? SOURCE_MEMORY[memoryKey] : null;
     if (remembered && remembered !== defaultSource) candidates.push(remembered);
-    if (candidates.indexOf(defaultSource) === -1) candidates.push(defaultSource);
+    var defaultSourceUsable = STABLE_SOURCES.indexOf(defaultSource) !== -1;
+    if (defaultSourceUsable && candidates.indexOf(defaultSource) === -1) {
+        candidates.push(defaultSource);
+    }
     STABLE_SOURCES.forEach(function (s) {
         if (candidates.indexOf(s) === -1) candidates.push(s);
     });
     return { candidates: candidates, id: id, defaultSource: defaultSource, memoryKey: memoryKey };
+}
+
+// 对一批搜索结果按「歌名 + 歌手」打分排序，返回最佳匹配项；不满足阈值返回 null。
+// 用于 findTrackInSource 的两轮匹配（带歌手 / 仅歌名回退）。
+function pickBestMatch(items, title, artist, requireArtist) {
+    var scored = items.map(function (item) {
+        return { item: item, score: matchScore(item, title, artist) };
+    }).sort(function (a, b) { return b.score - a.score; });
+    var minimum = requireArtist ? 32 : 20;
+    if (!scored.length || scored[0].score < minimum) return null;
+    if (requireArtist && scored[1] && scored[0].score - scored[1].score < 6 &&
+        !artistMatches(scored[1].item, artist)) return null;
+    // 仅歌名回退时，额外排除翻唱/伴奏/纯音乐等非原唱版本，
+    // 避免 QQ 歌单里错误的歌手名（如把「逆战」标成翻唱歌手）导致播到错版本。
+    if (!requireArtist && isCoverVersion(scored[0].item) && !isCoverVersion({ title: title })) {
+        var original = scored.find(function (e) { return !isCoverVersion(e.item); });
+        if (!original || original.score < minimum) return null;
+        return original.item;
+    }
+    return scored[0].item;
 }
 
 function findTrackInSource(source, musicItem) {
@@ -527,72 +552,100 @@ function findTrackInSource(source, musicItem) {
     var title = String(musicItem.title || "").trim();
     var artist = String(musicItem.artist || "").trim();
     if (!title) return Promise.resolve(null);
-    var keyword = artist ? title + " " + artist : title;
-    return searchOneSource(source, keyword, 1).then(function (items) {
-        var scored = items.map(function (item) {
-            item.source = item.source || source;
-            return { item: item, score: matchScore(item, title, artist) };
-        }).sort(function (a, b) { return b.score - a.score; });
-        var minimum = artist ? 32 : 20;
-        if (!scored.length || scored[0].score < minimum) return null;
-        if (scored[1] && scored[0].score - scored[1].score < 6 &&
-            !artistMatches(scored[1].item, artist)) return null;
-        return scored[0].item;
+
+    function searchAndPick(keyword, useArtist) {
+        return searchOneSource(source, keyword, 1).then(function (items) {
+            items.forEach(function (item) { item.source = item.source || source; });
+            return pickBestMatch(items, title, useArtist ? artist : "", useArtist);
+        });
+    }
+
+    // 第一轮：「歌名 + 歌手」严格匹配原唱
+    var firstKeyword = artist ? title + " " + artist : title;
+    return searchAndPick(firstKeyword, !!artist).then(function (found) {
+        if (found) return found;
+        // 回退：仅用歌名搜索。适用于 QQ 歌单里歌手名是翻唱者/标注错误的情况，
+        // 此时忽略歌手约束，取最高分的原唱版本。
+        if (!artist) return null;
+        return searchAndPick(title, false);
     });
 }
 
 // 歌词兜底：候选源（joox/bilibili/tencent 等）歌词为空时，
 // 用「歌名 + 歌手」并发搜索多个稳定源，按命中质量优先取原唱歌曲，再取其歌词。
+// 若带歌手匹配不到（QQ 歌单歌手名错误等），回退到仅歌名搜索，取最高分原唱。
 // 仅在直接取歌词失败时才调用，尽量节省接口频率额度。
 function fallbackSearchLyric(musicItem) {
-    var keyword = String(musicItem.title || "").trim();
-    if (!keyword) {
+    var title = String(musicItem.title || "").trim();
+    if (!title) {
         return Promise.resolve(null);
     }
     var artist = String(musicItem.artist || "").trim();
-    var name = artist ? keyword + " " + artist : keyword;
-    var tasks = STABLE_SOURCES.map(function (source) {
-        return searchOneSource(source, name, 1);
-    });
-    return Promise.all(tasks)
-        .then(function (results) {
+
+    function searchAcrossSources(keyword, useArtist) {
+        var tasks = STABLE_SOURCES.map(function (source) {
+            return searchOneSource(source, keyword, 1);
+        });
+        return Promise.all(tasks).then(function (results) {
             var scored = [];
             results.forEach(function (items, index) {
                 items.forEach(function (item) {
                     item.source = item.source || STABLE_SOURCES[index];
                     scored.push({
                         item: item,
-                        score: matchScore(item, keyword, artist),
+                        score: matchScore(item, title, useArtist ? artist : ""),
                     });
                 });
             });
             scored.sort(function (a, b) { return b.score - a.score; });
-            var minimum = artist ? 32 : 20;
+            var minimum = useArtist ? 32 : 20;
             var candidates = scored.filter(function (entry) {
                 return entry.score >= minimum;
-            }).slice(0, 8);
-            var index = 0;
-            function next() {
-                if (index >= candidates.length) return null;
-                var found = candidates[index].item;
-                index += 1;
-                var nid = found.lyric_id || found.lyricId || found.id;
-                if (!nid) return next();
-                return requestGD({
-                    types: "lyric",
-                    source: found.source || "netease",
-                    id: nid,
-                }).then(function (data) {
-                    if (data && data.lyric && !data.lyric.includes("暂无歌词")) {
-                        return {
-                            rawLrc: data.lyric,
-                            translation: data.tlyric || undefined,
-                        };
-                    }
-                    return next();
-                }).catch(next);
+            });
+            // 仅歌名回退时跳过翻唱/伴奏版本
+            if (!useArtist) {
+                candidates = candidates.filter(function (entry) {
+                    return !isCoverVersion(entry.item) || isCoverVersion({ title: title });
+                });
             }
-            return next();
+            return candidates.slice(0, 8);
+        });
+    }
+
+    function tryLyrics(candidates) {
+        var index = 0;
+        function next() {
+            if (index >= candidates.length) return null;
+            var found = candidates[index].item;
+            index += 1;
+            var nid = found.lyric_id || found.lyricId || found.id;
+            if (!nid) return next();
+            return requestGD({
+                types: "lyric",
+                source: found.source || "netease",
+                id: nid,
+            }).then(function (data) {
+                if (data && data.lyric && !data.lyric.includes("暂无歌词")) {
+                    return {
+                        rawLrc: data.lyric,
+                        translation: data.tlyric || undefined,
+                    };
+                }
+                return next();
+            }).catch(next);
+        }
+        return next();
+    }
+
+    var firstKeyword = artist ? title + " " + artist : title;
+    return searchAcrossSources(firstKeyword, !!artist)
+        .then(function (candidates) {
+            if (candidates.length) return candidates;
+            if (!artist) return [];
+            return searchAcrossSources(title, false);
+        })
+        .then(function (candidates) {
+            return tryLyrics(candidates);
         })
         .catch(function () {
             return null;
