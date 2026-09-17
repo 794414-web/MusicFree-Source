@@ -1,5 +1,6 @@
 jest.mock("axios", () => ({
     get: jest.fn(),
+    post: jest.fn(),
 }));
 
 const axios = require("axios");
@@ -12,6 +13,7 @@ function response(data) {
 describe("GD音乐台", () => {
     beforeEach(() => {
         axios.get.mockReset();
+        axios.post.mockReset();
     });
 
     test("搜索时保留完整关键词、去重并优先原唱", async () => {
@@ -131,5 +133,97 @@ describe("GD音乐台", () => {
         });
 
         expect(result.rawLrc).toContain("故事的小黄花");
+    });
+
+    test("繁体歌手名（周杰倫）能正确匹配到简体原唱", async () => {
+        axios.get.mockImplementation((url, config) => {
+            const params = config.params;
+            // netease 直接取地址失败，触发切换到 joox 重新搜索
+            if (params.types === "url" && params.source === "netease") {
+                return response({ url: "", br: -1, size: 0 });
+            }
+            if (params.types === "search" && params.source === "joox") {
+                // joox 返回繁体歌手名 + 翻唱版本，原唱应胜出
+                return response([
+                    {
+                        id: "joox-original",
+                        name: "晴天",
+                        artist: ["周杰倫"],
+                        source: "joox",
+                    },
+                    {
+                        id: "joox-cover",
+                        name: "晴天 (翻唱)",
+                        artist: ["其他歌手"],
+                        source: "joox",
+                    },
+                ]);
+            }
+            if (params.types === "url" && params.source === "joox") {
+                return response({ url: "https://example.com/joox.mp3", br: 320 });
+            }
+            return response([]);
+        });
+
+        const result = await plugin.getMediaSource(
+            {
+                title: "晴天",
+                artist: "周杰伦",
+                _gdSource: "netease",
+                _gdId: "netease-1",
+                _gdLyricId: "netease-1",
+            },
+            "standard",
+        );
+
+        expect(result.url).toBe("https://example.com/joox.mp3");
+    });
+
+    test("导入 QQ 音乐歌单返回曲目列表", async () => {
+        // QQ 歌单走 axios.post
+        axios.post.mockImplementation((url, body) => {
+            expect(url).toBe("https://u.y.qq.com/cgi-bin/musicu.fcg");
+            return Promise.resolve({
+                data: {
+                    req: {
+                        code: 0,
+                        data: {
+                            dirinfo: { songnum: 2 },
+                            songlist: [
+                                {
+                                    mid: "qq-song-1",
+                                    name: "晴天",
+                                    singer: [{ name: "周杰伦" }],
+                                    album: { name: "叶惠美", mid: "001abc" },
+                                    interval: 269,
+                                },
+                                {
+                                    mid: "qq-song-2",
+                                    name: "稻香",
+                                    singer: [{ name: "周杰伦" }],
+                                    album: { name: "魔杰座", mid: "002def" },
+                                    interval: 223,
+                                },
+                            ],
+                        },
+                    },
+                },
+            });
+        });
+
+        const result = await plugin.importMusicSheet(
+            "https://y.qq.com/n/ryqq/playlist/7707261125",
+        );
+
+        expect(result).toHaveLength(2);
+        expect(result[0]).toMatchObject({
+            title: "晴天",
+            artist: "周杰伦",
+            album: "叶惠美",
+            duration: 269000,
+            _gdSource: "qqmeta",
+            _gdId: "",
+        });
+        expect(result[0].artwork).toContain("001abc");
     });
 });

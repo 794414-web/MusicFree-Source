@@ -37,21 +37,20 @@ import getOrCreateMMKV from "@/utils/getOrCreateMMKV";
  * 这些 js 文件位于 android/app/src/main/assets/plugins/
  * 首次启动或版本升级时自动复制到插件目录
  */
-const BUILTIN_PLUGINS_VERSION = "11";
-const BUILTIN_PLUGIN_FILES: string[] = [
-    "gdstudio.js",
+const BUILTIN_PLUGINS_VERSION = "12";
+const BUILTIN_PLUGIN_FILES: string[] = ["gdstudio.js"];
+
+// 历史上曾作为内置音源的文件名（用于清理旧版本遗留的重复/废弃插件，
+// 升级时会从插件目录删除这些文件，确保仅保留 GD 音源）
+const BUILTIN_PLUGIN_ALL_FILES: string[] = [
+    ...BUILTIN_PLUGIN_FILES,
+    "sixyin.js",
     "qishui.js",
     "xiaogou.js",
     "xiaomi.js",
     "xiaoqiu.js",
     "xiaowo.js",
     "xiaoyun.js",
-];
-
-// 历史上曾作为内置音源的文件名（用于清理旧版本遗留的重复/废弃插件，如 sixyin.js）
-const BUILTIN_PLUGIN_ALL_FILES: string[] = [
-    ...BUILTIN_PLUGIN_FILES,
-    "sixyin.js",
 ];
 
 /**
@@ -565,34 +564,26 @@ async function setupBuiltinPlugins() {
 
 /**
  * 设置默认插件订阅
- * 首次启动时写入默认订阅地址。
- * 注意：这里只写配置，不删除/不自动安装插件。
- * 内置音源（GD音乐台 + 各平台导入插件）由 setupBuiltinPlugins 统一管理，
- * 删除插件文件会导致歌词、歌单导入等功能不可用。
+ * 本版本仅保留 GD 内置音源，不写入任何默认订阅地址。
+ * 若用户已有旧版默认订阅，则清空，避免拉取非 GD 插件。
  */
 async function setupDefaultPluginSubscribe() {
     try {
         const currentSubscribe = Config.getConfig("plugin.subscribeUrl");
-        const OLD_DEFAULT_URL = "https://13413.kstore.vip/yuanli/yuanli.json";
-        const NEW_DEFAULT_URL = "https://www.imwzh.com/musicfree.json";
-
-        // 如果还没有订阅，或是旧的默认订阅，则更新为新的
-        if (
+        const OLD_DEFAULT_URLS = [
+            "https://13413.kstore.vip/yuanli/yuanli.json",
+            "https://www.imwzh.com/musicfree.json",
+        ];
+        const needClear =
             !currentSubscribe ||
             currentSubscribe.trim() === "" ||
-            currentSubscribe.includes(OLD_DEFAULT_URL)
-        ) {
-            const defaultSubscribe = JSON.stringify([
-                {
-                    name: "MusicFree 音源库",
-                    url: NEW_DEFAULT_URL,
-                },
-            ]);
-            Config.setConfig("plugin.subscribeUrl", defaultSubscribe);
-            console.log("已设置默认插件订阅：MusicFree 音源库");
+            OLD_DEFAULT_URLS.some(url => currentSubscribe.includes(url));
+        if (needClear) {
+            Config.setConfig("plugin.subscribeUrl", "[]");
+            console.log("已清空默认插件订阅，仅保留 GD 内置音源");
         }
     } catch (e) {
-        console.error("设置默认插件订阅失败:", e);
+        console.error("清空默认插件订阅失败:", e);
     }
 }
 
