@@ -678,10 +678,55 @@ function fallbackSearchLyric(musicItem) {
         });
 }
 
+// ===== 榜单 / 歌单详情 =====
+// 网易云内置榜单（GD 聚合接口 types=playlist 对 source=netease 直接支持这些歌单ID，每日动态更新）。
+// GD 接口不提供「按标签浏览歌单」的发现接口，故推荐歌单广场(getRecommendSheetsByTag)无法动态实现，仅提供榜单入口。
+var NETEASE_TOP_LISTS = [
+    { id: "3778678", title: "热歌榜" },
+    { id: "3779629", title: "新歌榜" },
+    { id: "19723756", title: "飙升榜" },
+    { id: "2884035", title: "原创榜" },
+    { id: "71385702", title: "说唱榜" },
+    { id: "27135204", title: "电音榜" },
+    { id: "71384707", title: "ACG榜" },
+    { id: "745956260", title: "古典榜" },
+];
+
+// 拉取单页歌单曲目，复用 formatPlaylistTrack 格式化，返回 { musicList, total, name, cover }
+function fetchPlaylistTracksPage(source, id, page, count) {
+    return requestGD({
+        types: "playlist",
+        source: source,
+        id: id,
+        count: count,
+        pages: page,
+    }).then(function (data) {
+        var playlist = data && data.playlist ? data.playlist : null;
+        var rawTracks = [];
+        if (playlist && Array.isArray(playlist.tracks)) {
+            rawTracks = playlist.tracks;
+        } else if (data && Array.isArray(data.tracks)) {
+            rawTracks = data.tracks;
+        } else if (Array.isArray(data)) {
+            rawTracks = data;
+        }
+        var total = playlist ? Number(playlist.trackCount || playlist.total || 0) : 0;
+        var musicList = rawTracks
+            .map(function (track) { return formatPlaylistTrack(track, source); })
+            .filter(Boolean);
+        return {
+            musicList: musicList,
+            total: total || 0,
+            name: playlist ? playlist.name : undefined,
+            cover: playlist ? (playlist.coverImgUrl || playlist.picUrl) : undefined,
+        };
+    });
+}
+
 module.exports = {
     platform: "GD音乐台",
     author: "GD Studio",
-    version: "1.3.0",
+    version: "1.4.0",
     cacheControl: "no-cache",
     supportedSearchType: ["music", "lyric"],
     primaryKey: ["id"],
@@ -887,5 +932,72 @@ module.exports = {
         }).catch(function () {
             return tracks.length ? tracks : null;
         });
+    },
+
+    // 获取榜单：返回网易云内置榜单分组，封面在点开详情时由 getTopListDetail 补充
+    getTopLists: function () {
+        var data = NETEASE_TOP_LISTS.map(function (item) {
+            return {
+                id: item.id,
+                title: item.title,
+                platform: "GD音乐台",
+                _gdSource: "netease",
+            };
+        });
+        return Promise.resolve([
+            { title: "网易云榜单", data: data },
+        ]);
+    },
+
+    // 获取榜单详情：分页拉取榜单曲目
+    getTopListDetail: function (topListItem, page) {
+        var source = topListItem._gdSource || "netease";
+        var id = topListItem.id;
+        var pageNumber = Math.max(1, Number(page) || 1);
+        var count = 100;
+        return fetchPlaylistTracksPage(source, id, pageNumber, count)
+            .then(function (result) {
+                var loaded = pageNumber * count;
+                var isEnd = result.total > 0
+                    ? loaded >= result.total
+                    : result.musicList.length < count;
+                return {
+                    isEnd: isEnd,
+                    topListItem: Object.assign({}, topListItem, {
+                        coverImg: topListItem.coverImg || result.cover,
+                        artwork: topListItem.artwork || result.cover,
+                    }),
+                    musicList: result.musicList,
+                };
+            })
+            .catch(function () {
+                return { isEnd: true, musicList: [] };
+            });
+    },
+
+    // 获取歌单详情：搜索结果 / 榜单里的歌单条目点开后分页拉取曲目
+    getMusicSheetInfo: function (sheetItem, page) {
+        var source = sheetItem._gdSource || "netease";
+        var id = sheetItem.id;
+        var pageNumber = Math.max(1, Number(page) || 1);
+        var count = 100;
+        return fetchPlaylistTracksPage(source, id, pageNumber, count)
+            .then(function (result) {
+                var loaded = pageNumber * count;
+                var isEnd = result.total > 0
+                    ? loaded >= result.total
+                    : result.musicList.length < count;
+                return {
+                    isEnd: isEnd,
+                    sheetItem: Object.assign({}, sheetItem, {
+                        coverImg: sheetItem.coverImg || result.cover,
+                        artwork: sheetItem.artwork || result.cover,
+                    }),
+                    musicList: result.musicList,
+                };
+            })
+            .catch(function () {
+                return { isEnd: true, musicList: [] };
+            });
     },
 };

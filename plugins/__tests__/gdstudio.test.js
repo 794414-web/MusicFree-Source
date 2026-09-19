@@ -260,6 +260,78 @@ describe("GD音乐台", () => {
         expect(result[0].artwork).toContain("001abc");
     });
 
+    test("getTopLists 返回网易云榜单分组", async () => {
+        const groups = await plugin.getTopLists();
+        expect(Array.isArray(groups)).toBe(true);
+        expect(groups[0].title).toBe("网易云榜单");
+        expect(groups[0].data.length).toBeGreaterThan(0);
+        expect(groups[0].data[0]).toMatchObject({
+            platform: "GD音乐台",
+            _gdSource: "netease",
+        });
+        expect(groups[0].data[0].id).toBeTruthy();
+    });
+
+    test("getTopListDetail 分页拉取榜单曲目并判定 isEnd", async () => {
+        axios.get.mockImplementation((url, config) => {
+            const params = config.params;
+            expect(params.types).toBe("playlist");
+            expect(params.source).toBe("netease");
+            return response({
+                playlist: {
+                    name: "热歌榜",
+                    coverImgUrl: "https://example.com/cover.jpg",
+                    trackCount: 250,
+                    tracks: [
+                        { id: 11, name: "歌一", ar: [{ name: "歌手甲" }] },
+                        { id: 12, name: "歌二", ar: [{ name: "歌手乙" }] },
+                    ],
+                },
+            });
+        });
+
+        const result = await plugin.getTopListDetail(
+            { id: "3778678", title: "热歌榜", _gdSource: "netease" },
+            1,
+        );
+
+        expect(result.isEnd).toBe(false);
+        expect(result.musicList).toHaveLength(2);
+        expect(result.musicList[0]).toMatchObject({
+            title: "歌一",
+            artist: "歌手甲",
+            _gdSource: "netease",
+            _gdId: "11",
+        });
+        expect(result.topListItem.coverImg).toBe("https://example.com/cover.jpg");
+    });
+
+    test("getMusicSheetInfo 拉取歌单曲目，最后一页 isEnd 为 true", async () => {
+        axios.get.mockImplementation((url, config) => {
+            const params = config.params;
+            expect(params.types).toBe("playlist");
+            return response({
+                playlist: {
+                    name: "我的歌单",
+                    trackCount: 2,
+                    tracks: [
+                        { id: 21, name: "甲", ar: [{ name: "A" }] },
+                        { id: 22, name: "乙", ar: [{ name: "B" }] },
+                    ],
+                },
+            });
+        });
+
+        const result = await plugin.getMusicSheetInfo(
+            { id: "999", title: "我的歌单", _gdSource: "netease" },
+            1,
+        );
+
+        expect(result.isEnd).toBe(true);
+        expect(result.musicList).toHaveLength(2);
+        expect(result.musicList[1]._gdId).toBe("22");
+    });
+
     test("遇到429限流时按指数退避自动重试直到成功", async () => {
         jest.useFakeTimers();
         const attempts = [];
