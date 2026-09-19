@@ -33,7 +33,7 @@ declare namespace ICommon {
     export type IMediaMeta = {
         /** 关联歌词信息 */
         associatedLrc?: IMediaBase;
-        /** 是否下载过 TODO: 删去 */
+        /** 是否已下载（同步自 MediaExtra） */
         downloaded?: boolean;
         /** 本地下载路径 */
         localPath?: string;

@@ -37,11 +37,37 @@ const QUALITY_BR = {
     super: 740,
 };
 
-function requestGD(params) {
+// GD 接口 5 分钟 50 次的限流，被限流时返回 HTTP 429 或在业务字段带 status=429。
+// 命中限流时按 1s/2s/4s 指数退避最多重试 2 次，避免连打请求被永久拉黑。
+var GD_RETRY_DELAYS = [1000, 2000];
+
+function isRateLimited(error) {
+    if (!error) return false;
+    var status = error.response && error.response.status;
+    if (status === 429) return true;
+    if (error.code === "ECONNABORTED") return false;
+    var msg = String(error.message || "").toLowerCase();
+    return msg.indexOf("429") !== -1 || msg.indexOf("rate limit") !== -1;
+}
+
+function sleep(ms) {
+    return new Promise(function (resolve) { setTimeout(resolve, ms); });
+}
+
+function requestGD(params, retryCount) {
+    var attempt = retryCount || 0;
     return axios
         .get(BASE_URL, { params: params, timeout: REQUEST_TIMEOUT })
         .then(function (res) {
             return res.data;
+        })
+        .catch(function (error) {
+            if (isRateLimited(error) && attempt < GD_RETRY_DELAYS.length) {
+                return sleep(GD_RETRY_DELAYS[attempt]).then(function () {
+                    return requestGD(params, attempt + 1);
+                });
+            }
+            throw error;
         });
 }
 
@@ -655,7 +681,7 @@ function fallbackSearchLyric(musicItem) {
 module.exports = {
     platform: "GD音乐台",
     author: "GD Studio",
-    version: "1.2.0",
+    version: "1.3.0",
     cacheControl: "no-cache",
     supportedSearchType: ["music", "lyric"],
     primaryKey: ["id"],

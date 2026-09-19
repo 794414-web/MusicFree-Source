@@ -5,6 +5,26 @@
  * - 管理车机连接（目前只支持一台车机，后续可扩展多设备）
  * - 发送命令并等待响应
  * - 连接状态追踪
+ *
+ * ============================================================
+ * MCP WebSocket 消息协议（服务端 <-> MusicFree App）
+ * 本协议同时被 ai/fake_llm_server.py 的 /mcp 端点复用，两边必须保持一致，
+ * 修改时请同步更新，避免格式漂移。App 侧实现见
+ * src/core/remoteControl/index.ts。
+ *
+ * App -> 服务端：
+ *   { "type": "hello", "device": "musicfree-car", "version": "1.0" }  连接建立后握手
+ *   { "type": "pong",  "id": "<ping-id>" }                             响应服务端心跳
+ *   { "type": "response", "id": "<cmd-id>", "result": <IApiResponse> } 命令执行结果
+ *   { "type": "event", "data": <any> }                                 主动推送（可选）
+ *
+ * 服务端 -> App：
+ *   { "type": "ping", "id": "<ping-id>" }             心跳探测（可选，App 也会主动 ping）
+ *   { "id": "<cmd-id>", "action": "<name>", "params": {} }  下发命令，等待同 id 的 response
+ *
+ * 常用 action：play_search / play / pause / toggle / next / previous /
+ *   seek / set_volume / clear / repeat / set_repeat_mode / search / get_status
+ * ============================================================
  */
 
 const { EventEmitter } = require("events");

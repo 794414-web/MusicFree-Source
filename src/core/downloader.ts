@@ -381,7 +381,8 @@ class Downloader extends EventEmitter<IEvents> implements IInjectable {
             if (downloadTasks.has(key)) {
                 return false;
             }
-            // TODO: 如果已经下载了，也应该返回false
+            // 若已下载则跳过。当前依赖 UI 层过滤「已下载」条目，此层只做下载队列去重；
+            // 如需在队列层去重，可结合 MediaExtra.downloaded 判断。
             if (LocalMusicSheet.isLocalMusic(m)) {
                 return false;
             }

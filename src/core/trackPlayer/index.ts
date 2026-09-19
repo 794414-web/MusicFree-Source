@@ -243,7 +243,9 @@ class TrackPlayer extends EventEmitter<{
                     const currentTrack =
                         await ReactNativeTrackPlayer.getActiveTrack();
                     if (currentTrack?.isInit) {
-                        // HACK: 避免初始失败的情况
+                        // 首次加载失败时 TrackPlayer 会卡住 isInit 标记，
+                        // 导致后续同一条目都无法再尝试播放；这里把标记清掉让下一次调度继续。
+                        // 长期修复需要重排 isInit 的置位/清理时机。
                         ReactNativeTrackPlayer.updateMetadataForTrack(0, {
                             ...currentTrack,
                             // @ts-ignore

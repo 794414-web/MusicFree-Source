@@ -6,7 +6,14 @@
     "- 修复 GD 音乐台搜索、歌单导入、歌词和播放匹配。",
     "- 优化原唱识别，降低 Live、翻唱、DJ、Remix、伴奏及纯音乐误匹配。",
     "- 修复启动初始化、远程连接和更新安装链路。",
-    "- 本版本使用 Debug 构建通道发布。"
+    "- 本版本使用 Debug 构建通道发布。",
+    "",
+    "### 后续修复 (v2.1.0 hotfix)",
+    "- GD 接口命中 429 频率限制时按指数退避自动重试。",
+    "- `package-lock.json` 版本号与 `package.json` 对齐。",
+    "- 补齐 `changelog.md` 的 2.x 记录。",
+    "- 清理代码库遗留的 TODO/FIXME 注释。",
+    "- 在 `mcp-server` 中注明与 `ai/fake_llm_server.py` 的启动互斥。"
   ],
   "download": [
     "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.1.0/MusicFree-2.1.0-universal.apk",

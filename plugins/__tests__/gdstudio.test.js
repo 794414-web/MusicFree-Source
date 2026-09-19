@@ -259,4 +259,30 @@ describe("GD音乐台", () => {
         });
         expect(result[0].artwork).toContain("001abc");
     });
+
+    test("遇到429限流时按指数退避自动重试直到成功", async () => {
+        jest.useFakeTimers();
+        const attempts = [];
+        const rateLimited = new Error("Request rate limit exceeded");
+        rateLimited.response = { status: 429 };
+        axios.get.mockImplementation(() => {
+            attempts.push(Date.now());
+            if (attempts.length < 3) return Promise.reject(rateLimited);
+            return Promise.resolve({
+                data: { url: "https://example.com/song.mp3", br: 320 },
+            });
+        });
+
+        const promise = plugin.getMediaSource(
+            { id: "netease-42", title: "歌", artist: "人", _gdSource: "netease", _gdId: "42" },
+            "standard",
+        );
+        // 第一次 sleep(1000) 触发 retry 1；第二次 sleep(2000) 触发 retry 2
+        await jest.advanceTimersByTimeAsync(3000);
+        const result = await promise;
+
+        expect(attempts.length).toBe(3);
+        expect(result.url).toBe("https://example.com/song.mp3");
+        jest.useRealTimers();
+    });
 });

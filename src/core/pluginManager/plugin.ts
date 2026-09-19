@@ -413,7 +413,7 @@ class PluginMethodsWrapper implements IPlugin.IPluginInstanceMethods {
 
             return {
                 rawLrc,
-                translation: translation || undefined, // TODO: 这里写的不好
+                translation: translation || undefined,
             };
         }
 

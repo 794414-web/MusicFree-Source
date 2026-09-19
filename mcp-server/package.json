@@ -2,6 +2,7 @@
   "name": "musicfree-mcp-server",
   "version": "1.0.0",
   "description": "MusicFree 音乐播放器 MCP 服务器 - 支持飞书、企业微信、小智AI语音控制",
+  "note": "车机场景若同时运行本目录与 ai/fake_llm_server.py，会争抢 MusicFree 应用内的唯一 MCP WebSocket 会话（App 侧仅支持一条连接）。二选一启动：用飞书/企业微信/小智AI 时跑本服务；用车机本地语音时跑 fake_llm_server.py。",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

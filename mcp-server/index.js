@@ -1062,6 +1062,13 @@ server.listen(serverPort, serverHost, () => {
     console.log(`    在车机 APP 中设置 MCP 地址为: ws://你电脑IP:${serverPort}/ws`);
     console.log(`    例如: ws://192.168.1.50:${serverPort}/ws`);
     console.log("");
+    console.log("  ⚠️  互斥提示:");
+    console.log("    MusicFree App 只支持连接一个 MCP 服务。");
+    console.log("    请勿与 ai/fake_llm_server.py 的 /mcp 同时使用同一台设备，");
+    console.log("    否则后连接的会踢掉先连接的。二选一：");
+    console.log("    · 用飞书/企业微信/小智AI 语音 -> 跑本服务 (/ws)");
+    console.log("    · 用车机本地奔奔助手       -> 跑 fake_llm_server.py (/mcp)");
+    console.log("");
     console.log("  可用接口:");
     console.log("    GET  /health               - 健康检查");
     console.log("    GET  /api/play-search?q=   - 搜索并播放");

@@ -586,7 +586,8 @@ function useFavorite(musicItem: IMusic.IMusicItem | null) {
 function useSheetIsStarred(
     musicSheet?: IMusic.IMusicSheetItem | null,
 ) {
-    // TODO: 类型有问题
+    // starredMusicSheetsAtom 存的是收藏的歌单，但类型未收窄为 IMusicSheetItem；
+    // 用 IMediaBase 作为公共基类比对 id/platform，避免引入循环依赖。
     const musicSheets = useAtomValue(starredMusicSheetsAtom);
     return useMemo(() => {
         if (!musicSheet) {
