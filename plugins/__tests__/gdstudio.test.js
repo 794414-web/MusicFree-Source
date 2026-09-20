@@ -357,4 +357,41 @@ describe("GD音乐台", () => {
         expect(result.url).toBe("https://example.com/song.mp3");
         jest.useRealTimers();
     });
+
+    test("GD 请求带上 User-Agent 头部", async () => {
+        let capturedConfig = null;
+        axios.get.mockImplementation((url, config) => {
+            capturedConfig = config;
+            return response([]);
+        });
+        await plugin.search("测试", 1, "music");
+        expect(capturedConfig).toBeTruthy();
+        expect(capturedConfig.headers).toBeTruthy();
+        expect(capturedConfig.headers["User-Agent"]).toMatch(/Mozilla/);
+    });
+
+    test("遇到503临时错误时按指数退避自动重试直到成功", async () => {
+        jest.useFakeTimers();
+        const attempts = [];
+        const serviceDown = new Error("Request failed with status code 503");
+        serviceDown.response = { status: 503 };
+        axios.get.mockImplementation(() => {
+            attempts.push(Date.now());
+            if (attempts.length < 3) return Promise.reject(serviceDown);
+            return Promise.resolve({
+                data: { url: "https://example.com/song.mp3", br: 320 },
+            });
+        });
+
+        const promise = plugin.getMediaSource(
+            { id: "netease-42", title: "歌", artist: "人", _gdSource: "netease", _gdId: "42" },
+            "standard",
+        );
+        await jest.advanceTimersByTimeAsync(3000);
+        const result = await promise;
+
+        expect(attempts.length).toBe(3);
+        expect(result.url).toBe("https://example.com/song.mp3");
+        jest.useRealTimers();
+    });
 });

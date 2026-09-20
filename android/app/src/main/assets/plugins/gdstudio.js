@@ -20,7 +20,12 @@
 
 const axios = require("axios");
 
-const BASE_URL = "https://music-api.gdstudio.xyz/api.php";
+// GD 接口多域名：主域名不可用（如 Cloudflare 521 源站宕机 / 超时 / 连接失败）时自动切到备用域名。
+const GD_API_HOSTS = [
+    "https://music-api.gdstudio.xyz/api.php",
+    "https://music.gdstudio.xyz/api.php",
+];
+const BASE_URL = GD_API_HOSTS[0];
 
 // GD 接口响应较慢，显式覆盖插件级默认 2000ms 超时，避免请求被过早中断
 const REQUEST_TIMEOUT = 15000;
@@ -41,6 +46,11 @@ const QUALITY_BR = {
 // 命中限流时按 1s/2s/4s 指数退避最多重试 2 次，避免连打请求被永久拉黑。
 var GD_RETRY_DELAYS = [1000, 2000];
 
+// GD 接口会校验 User-Agent，缺失时返回 503。所有 GD 请求统一带上浏览器 UA。
+var GD_REQUEST_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+};
+
 function isRateLimited(error) {
     if (!error) return false;
     var status = error.response && error.response.status;
@@ -50,22 +60,36 @@ function isRateLimited(error) {
     return msg.indexOf("429") !== -1 || msg.indexOf("rate limit") !== -1;
 }
 
+// 临时性服务错误（网关/过载/源站宕机）：503/502/504/521/522/523/524，退避后重试仍失败再切换域名。
+function isTransientError(error) {
+    if (!error) return false;
+    var status = error.response && error.response.status;
+    return status === 503 || status === 502 || status === 504 ||
+        status === 521 || status === 522 || status === 523 || status === 524;
+}
+
 function sleep(ms) {
     return new Promise(function (resolve) { setTimeout(resolve, ms); });
 }
 
-function requestGD(params, retryCount) {
+function requestGD(params, retryCount, hostIndex) {
     var attempt = retryCount || 0;
+    var host = hostIndex || 0;
     return axios
-        .get(BASE_URL, { params: params, timeout: REQUEST_TIMEOUT })
+        .get(GD_API_HOSTS[host], { params: params, timeout: REQUEST_TIMEOUT, headers: GD_REQUEST_HEADERS })
         .then(function (res) {
             return res.data;
         })
         .catch(function (error) {
-            if (isRateLimited(error) && attempt < GD_RETRY_DELAYS.length) {
+            // 限流或临时服务错误：先在当前域名按指数退避重试
+            if ((isRateLimited(error) || isTransientError(error)) && attempt < GD_RETRY_DELAYS.length) {
                 return sleep(GD_RETRY_DELAYS[attempt]).then(function () {
-                    return requestGD(params, attempt + 1);
+                    return requestGD(params, attempt + 1, host);
                 });
+            }
+            // 当前域名重试用尽（非限流），切换到下一个备用域名重新开始
+            if (!isRateLimited(error) && host < GD_API_HOSTS.length - 1) {
+                return requestGD(params, 0, host + 1);
             }
             throw error;
         });
@@ -726,7 +750,7 @@ function fetchPlaylistTracksPage(source, id, page, count) {
 module.exports = {
     platform: "GD音乐台",
     author: "GD Studio",
-    version: "1.4.0",
+    version: "1.5.0",
     cacheControl: "no-cache",
     supportedSearchType: ["music", "lyric"],
     primaryKey: ["id"],
@@ -883,7 +907,7 @@ module.exports = {
             return importQQPlaylist(parsed.id);
         }
         var page = 1;
-        var count = 100;
+        var count = 99;
         var maxPages = 20;
         var tracks = [];
         var seenTracks = {};
@@ -954,7 +978,7 @@ module.exports = {
         var source = topListItem._gdSource || "netease";
         var id = topListItem.id;
         var pageNumber = Math.max(1, Number(page) || 1);
-        var count = 100;
+        var count = 99;
         return fetchPlaylistTracksPage(source, id, pageNumber, count)
             .then(function (result) {
                 var loaded = pageNumber * count;
@@ -971,7 +995,7 @@ module.exports = {
                 };
             })
             .catch(function () {
-                return { isEnd: true, musicList: [] };
+                return { isEnd: true, topListItem: topListItem, musicList: [] };
             });
     },
 
@@ -980,7 +1004,7 @@ module.exports = {
         var source = sheetItem._gdSource || "netease";
         var id = sheetItem.id;
         var pageNumber = Math.max(1, Number(page) || 1);
-        var count = 100;
+        var count = 99;
         return fetchPlaylistTracksPage(source, id, pageNumber, count)
             .then(function (result) {
                 var loaded = pageNumber * count;
@@ -997,7 +1021,7 @@ module.exports = {
                 };
             })
             .catch(function () {
-                return { isEnd: true, musicList: [] };
+                return { isEnd: true, sheetItem: sheetItem, musicList: [] };
             });
     },
 };
