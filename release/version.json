@@ -1,21 +1,19 @@
 {
-  "version": "2.1.3",
+  "version": "2.1.4",
   "changeLog": [
-    "## v2.1.3 稳定性修复",
+    "## v2.1.4 QQ 歌单导入修复",
     "",
-    "- 修复 GD 接口强制校验 User-Agent 导致所有功能不可用的问题（缺失 UA 时返回 503）。",
-    "- 修复歌单/榜单请求的 count 参数超出 GD 上限（100→99）导致拉取失败的问题。",
-    "- GD 接口新增多域名故障转移（主域名不可用时自动切换备用域名）。",
-    "- 503/502/504/521 等临时服务错误纳入指数退避重试。",
-    "- 榜单/歌单详情请求失败时保留条目信息，避免 UI 崩溃。",
-    "- GD 插件升级至 1.5.0。"
+    "- 修复部分 QQ 音乐歌单（y.qq.com/n/ryqq_v2/playlist/xxx 分享链接）导入失败的问题。",
+    "- QQ 歌单接口返回 text/plain 未自动解析时手动解析，避免拿到空列表。",
+    "- QQ 歌单 POST 通道失败时自动降级 GET 通道，提升导入成功率。",
+    "- GD 插件升级至 1.6.0。"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.1.3/MusicFree-2.1.3-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.3/MusicFree-2.1.3-universal.apk",
-    "https://ghproxy.net/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.3/MusicFree-2.1.3-universal.apk",
-    "https://ghps.cc/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.3/MusicFree-2.1.3-universal.apk",
-    "https://mirror.ghproxy.com/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.3/MusicFree-2.1.3-universal.apk",
-    "https://kkgithub.com/794414-web/MusicFree-Source/releases/download/v2.1.3/MusicFree-2.1.3-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.1.4/MusicFree-2.1.4-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.4/MusicFree-2.1.4-universal.apk",
+    "https://ghproxy.net/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.4/MusicFree-2.1.4-universal.apk",
+    "https://ghps.cc/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.4/MusicFree-2.1.4-universal.apk",
+    "https://mirror.ghproxy.com/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.4/MusicFree-2.1.4-universal.apk",
+    "https://kkgithub.com/794414-web/MusicFree-Source/releases/download/v2.1.4/MusicFree-2.1.4-universal.apk"
   ]
 }

@@ -260,6 +260,71 @@ describe("GD音乐台", () => {
         expect(result[0].artwork).toContain("001abc");
     });
 
+    test("QQ 歌单返回未解析的 text/plain 字符串时手动解析成功", async () => {
+        const payload = JSON.stringify({
+            req: {
+                code: 0,
+                data: {
+                    dirinfo: { songnum: 1 },
+                    songlist: [
+                        {
+                            mid: "qq-str-1",
+                            name: "等一分钟",
+                            singer: [{ name: "徐誉滕" }],
+                            album: { name: "等一分钟", mid: "003ghi" },
+                            interval: 240,
+                        },
+                    ],
+                },
+            },
+        });
+        axios.post.mockImplementation(() => Promise.resolve({ data: payload }));
+
+        const result = await plugin.importMusicSheet(
+            "https://y.qq.com/n/ryqq_v2/playlist/9590725861?mnst=1.00",
+        );
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toMatchObject({
+            title: "等一分钟",
+            artist: "徐誉滕",
+            _gdSource: "qqmeta",
+        });
+    });
+
+    test("QQ 歌单 POST 失败时降级 GET 通道", async () => {
+        axios.post.mockImplementation(() => Promise.reject(new Error("network")));
+        axios.get.mockImplementation((url) => {
+            expect(url).toBe("https://u.y.qq.com/cgi-bin/musicu.fcg");
+            return Promise.resolve({
+                data: {
+                    req: {
+                        code: 0,
+                        data: {
+                            dirinfo: { songnum: 1 },
+                            songlist: [
+                                {
+                                    mid: "qq-get-1",
+                                    name: "弥渡山歌",
+                                    singer: [{ name: "羊音乐" }],
+                                    album: { name: "弥渡山歌", mid: "004jkl" },
+                                    interval: 200,
+                                },
+                            ],
+                        },
+                    },
+                },
+            });
+        });
+
+        const result = await plugin.importMusicSheet(
+            "https://y.qq.com/n/ryqq_v2/playlist/9709123181",
+        );
+
+        expect(result).toHaveLength(1);
+        expect(result[0].title).toBe("弥渡山歌");
+    });
+
     test("getTopLists 返回网易云榜单分组", async () => {
         const groups = await plugin.getTopLists();
         expect(Array.isArray(groups)).toBe(true);
