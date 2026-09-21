@@ -37,7 +37,7 @@ import getOrCreateMMKV from "@/utils/getOrCreateMMKV";
  * 这些 js 文件位于 android/app/src/main/assets/plugins/
  * 首次启动或版本升级时自动复制到插件目录
  */
-const BUILTIN_PLUGINS_VERSION = "16";
+const BUILTIN_PLUGINS_VERSION = "17";
 const BUILTIN_PLUGIN_FILES: string[] = ["gdstudio.js"];
 
 // 历史上曾作为内置音源的文件名（用于清理旧版本遗留的重复/废弃插件，

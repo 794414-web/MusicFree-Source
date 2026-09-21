@@ -214,8 +214,8 @@ describe("GD音乐台", () => {
     });
 
     test("导入 QQ 音乐歌单返回曲目列表", async () => {
-        axios.post.mockImplementation((url, body) => {
-            expect(url).toBe("https://u.y.qq.com/cgi-bin/musicu.fcg");
+        axios.get.mockImplementation((url) => {
+            expect(url).toContain("https://u.y.qq.com/cgi-bin/musicu.fcg?data=");
             return Promise.resolve({
                 data: {
                     req: {
@@ -278,7 +278,7 @@ describe("GD音乐台", () => {
                 },
             },
         });
-        axios.post.mockImplementation(() => Promise.resolve({ data: payload }));
+        axios.get.mockImplementation(() => Promise.resolve({ data: payload }));
 
         const result = await plugin.importMusicSheet(
             "https://y.qq.com/n/ryqq_v2/playlist/9590725861?mnst=1.00",
@@ -292,9 +292,9 @@ describe("GD音乐台", () => {
         });
     });
 
-    test("QQ 歌单 POST 失败时降级 GET 通道", async () => {
-        axios.post.mockImplementation(() => Promise.reject(new Error("network")));
-        axios.get.mockImplementation((url) => {
+    test("QQ 歌单 GET 失败时降级 POST 通道", async () => {
+        axios.get.mockImplementation(() => Promise.reject(new Error("network")));
+        axios.post.mockImplementation((url) => {
             expect(url).toBe("https://u.y.qq.com/cgi-bin/musicu.fcg");
             return Promise.resolve({
                 data: {

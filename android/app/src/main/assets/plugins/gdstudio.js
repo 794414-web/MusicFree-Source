@@ -451,6 +451,12 @@ function formatPlaylistTrack(track, source) {
 // 导入的曲目不携带 GD 原始 ID，播放时由 findTrackInSource 通过「歌名 + 歌手」
 // 在 GD 支持的源（netease/joox/bilibili）中重新检索匹配，从而拿到可播放地址与歌词。
 var QQ_PLAYLIST_API = "https://u.y.qq.com/cgi-bin/musicu.fcg";
+// GET 通道请求头：只带 UA。RN(OkHttp) 网络栈对 Referer / Content-Type 等
+// 受限头的处理与 Node 不同，剥离到最少可显著提升真机成功率。
+var QQ_GET_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+};
+// POST 兜底通道请求头：保留完整头。
 var QQ_REQUEST_HEADERS = {
     Referer: "https://y.qq.com/",
     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
@@ -495,25 +501,30 @@ function parseQQResponse(raw) {
 
 function fetchQQPlaylistPage(disstid, songBegin, songNum) {
     var body = buildQQDissBody(disstid, songBegin, songNum);
-    // 主通道：POST + JSON body。失败或拿不到曲目时降级 GET(?data=)，
-    // 覆盖部分 RN 网络栈对「POST 发 JSON 字符串 / 收 text-plain」处理异常的场景。
-    return axios
-        .post(QQ_PLAYLIST_API, body, { headers: QQ_REQUEST_HEADERS, timeout: REQUEST_TIMEOUT })
-        .then(function (res) { return parseQQResponse(res.data); })
+    // 主通道：GET + 手动编码 URL（?data=），只带 UA。经真机验证，RN(OkHttp)
+    // 网络栈对「POST 发 JSON 字符串 body + Content-Type」处理异常会导致空列表，
+    // 而 GET 手动拼 URL 稳定返回。失败或空结果时降级 POST 兜底。
+    return fetchQQPlaylistPageViaGet(body)
         .then(function (result) {
             if (result.songlist.length || result.songnum > 0) return result;
-            return fetchQQPlaylistPageViaGet(body);
+            return fetchQQPlaylistPageViaPost(body);
         })
-        .catch(function () { return fetchQQPlaylistPageViaGet(body); });
+        .catch(function () { return fetchQQPlaylistPageViaPost(body); });
 }
 
 function fetchQQPlaylistPageViaGet(body) {
+    // 手动 encodeURIComponent 拼 URL，不依赖 axios 的 params 序列化，
+    // 规避 RN 环境下参数编码差异。
+    var url = QQ_PLAYLIST_API + "?data=" + encodeURIComponent(body);
     return axios
-        .get(QQ_PLAYLIST_API, {
-            params: { data: body },
-            headers: QQ_REQUEST_HEADERS,
-            timeout: REQUEST_TIMEOUT,
-        })
+        .get(url, { headers: QQ_GET_HEADERS, timeout: REQUEST_TIMEOUT })
+        .then(function (res) { return parseQQResponse(res.data); })
+        .catch(function () { return { songlist: [], songnum: 0 }; });
+}
+
+function fetchQQPlaylistPageViaPost(body) {
+    return axios
+        .post(QQ_PLAYLIST_API, body, { headers: QQ_REQUEST_HEADERS, timeout: REQUEST_TIMEOUT })
         .then(function (res) { return parseQQResponse(res.data); })
         .catch(function () { return { songlist: [], songnum: 0 }; });
 }
@@ -780,7 +791,7 @@ function fetchPlaylistTracksPage(source, id, page, count) {
 module.exports = {
     platform: "GD音乐台",
     author: "GD Studio",
-    version: "1.6.0",
+    version: "1.7.0",
     cacheControl: "no-cache",
     supportedSearchType: ["music", "lyric"],
     primaryKey: ["id"],
