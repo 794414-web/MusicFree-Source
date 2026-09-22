@@ -12,6 +12,7 @@ import PanelBase from "../base/panelBase";
 import PanelHeader from "../base/panelHeader";
 import { showPanel } from "../usePanel";
 import { useI18N } from "@/core/i18n";
+import { errorLog } from "@/utils/log";
 
 export default function ImportMusicSheet() {
     const validPlugins = PluginManager.getSortedPluginsWithAbility("importMusicSheet");
@@ -29,15 +30,31 @@ export default function ImportMusicSheet() {
             ...validPlugins.filter(p => p.name === "GD音乐台"),
             ...validPlugins.filter(p => p.name !== "GD音乐台"),
         ];
+        const failedLogs: string[] = [];
         for (const plugin of ordered) {
             try {
                 const result = await plugin.methods.importMusicSheet(urlLike);
                 if (result && result.length > 0) {
                     return result;
                 }
-            } catch {
-                // 单个插件识别/导入失败，继续尝试下一个
+                failedLogs.push(`${plugin.name}: 返回空`);
+            } catch (e: any) {
+                failedLogs.push(`${plugin.name}: ${e?.message || e || "未知错误"}`);
             }
+        }
+        if (failedLogs.length) {
+            // 生产模式 console.log 会被 babel 剥离，warn/error 保留到 logcat(ReactNativeJS)。
+            // 用 warn 打印一次，同时写入文件错误日志，便于用户端在「日志」菜单查看。
+            try {
+                // eslint-disable-next-line no-console
+                console.warn("[ImportPlaylist] failed:", urlLike, failedLogs.join(" | "));
+            } catch {}
+            try {
+                errorLog("歌单导入失败", {
+                    url: urlLike,
+                    errors: failedLogs,
+                });
+            } catch {}
         }
         return [];
     };

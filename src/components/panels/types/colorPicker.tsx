@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState, useCallback, useEffect } from "react";
-import { Image, StyleSheet, View, TextInput } from "react-native";
+import { Image, StyleSheet, View, TextInput, TouchableOpacity } from "react-native";
 import rpx from "@/utils/rpx";
 import PanelBase from "../base/panelBase";
 import LinearGradient from "react-native-linear-gradient";
@@ -7,7 +7,8 @@ import Color from "color";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { hidePanel } from "../usePanel";
 import { ImgAsset } from "@/constants/assetsConst";
-import PanelHeader from "../base/panelHeader";
+import useColors from "@/hooks/useColors";
+import ThemeText from "@/components/base/themeText";
 import { useI18N } from "@/core/i18n";
 
 interface IColorPickerProps {
@@ -180,44 +181,54 @@ export default function ColorPicker(props: IColorPickerProps) {
         handleColorInputSubmit();
     }, [handleColorInputSubmit]);
 
+    const colors = useColors();
+
+    const handleOk = useCallback(() => {
+        if (inputValue !== colorHexString) {
+            try {
+                const color = Color(inputValue);
+                const hsl = color.hsl();
+
+                setCurrentHue(hsl.hue() || 0);
+                setCurrentSaturation(hsl.saturationl());
+                setCurrentLightness(hsl.lightness());
+                setCurrentAlpha(color.alpha());
+
+                onSelected?.(color);
+            } catch (error) {
+                onSelected?.(currentColorWithAlpha);
+            }
+        } else {
+            onSelected?.(currentColorWithAlpha);
+        }
+
+        if (closePanelWhenSelected) {
+            hidePanel();
+        }
+    }, [inputValue, colorHexString, currentColorWithAlpha, onSelected, closePanelWhenSelected]);
+
     return (
         <PanelBase
             height={rpx(750)}
             keyboardAvoidBehavior="height"
             renderBody={() => (
                 <>
-                    <PanelHeader
-                        onCancel={hidePanel}
-                        onOk={async () => {
-                            // 检查输入框的值是否与当前颜色不同
-                            if (inputValue !== colorHexString) {
-                                try {
-                                    const color = Color(inputValue);
-                                    const hsl = color.hsl();
-                                    
-                                    // 更新颜色状态
-                                    setCurrentHue(hsl.hue() || 0);
-                                    setCurrentSaturation(hsl.saturationl());
-                                    setCurrentLightness(hsl.lightness());
-                                    setCurrentAlpha(color.alpha());
-                                    
-                                    // 使用输入的颜色进行提交
-                                    onSelected?.(color);
-                                } catch (error) {
-                                    // 如果输入的颜色无效，使用当前颜色
-                                    onSelected?.(currentColorWithAlpha);
-                                }
-                            } else {
-                                // 输入值与当前颜色相同，直接使用当前颜色
-                                onSelected?.(currentColorWithAlpha);
-                            }
-                            
-                            if (closePanelWhenSelected) {
-                                hidePanel();
-                            }
-                        }}
-                        title={t("panel.colorPicker.title")}
-                    />
+                    <View style={[styles.titleBar, { backgroundColor: colors.backdrop }]}>
+                        <TouchableOpacity
+                            style={styles.cancelBtn}
+                            onPress={hidePanel}>
+                            <ThemeText fontWeight="medium">
+                                {t("common.cancel")}
+                            </ThemeText>
+                        </TouchableOpacity>
+                        <ThemeText
+                            fontWeight="bold"
+                            fontSize="title"
+                            numberOfLines={1}>
+                            {t("panel.colorPicker.title")}
+                        </ThemeText>
+                        <View style={styles.cancelBtn} />
+                    </View>
 
                     <View style={styles.container}>
                         <GestureDetector gesture={slComposed}>
@@ -336,6 +347,19 @@ export default function ColorPicker(props: IColorPickerProps) {
                             autoCorrect={false}
                             returnKeyType="done"
                         />
+                        <TouchableOpacity
+                            style={[
+                                styles.confirmBtn,
+                                { backgroundColor: colors.primary },
+                            ]}
+                            onPress={handleOk}>
+                            <ThemeText
+                                fontWeight="medium"
+                                color="#fff"
+                                fontSize="subTitle">
+                                {t("common.confirm")}
+                            </ThemeText>
+                        </TouchableOpacity>
                     </View>
                 </>
             )}
@@ -351,6 +375,30 @@ const styles = StyleSheet.create({
         height: rpx(100),
         alignItems: "center",
         justifyContent: "space-between",
+    },
+    titleBar: {
+        width: "100%",
+        height: rpx(100),
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "space-between",
+        paddingHorizontal: rpx(24),
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: "rgba(150,150,150,0.2)",
+    },
+    cancelBtn: {
+        height: rpx(64),
+        paddingVertical: rpx(4),
+        paddingHorizontal: rpx(16),
+        justifyContent: "center",
+    },
+    confirmBtn: {
+        height: rpx(40),
+        paddingHorizontal: rpx(20),
+        borderRadius: rpx(10),
+        justifyContent: "center",
+        alignItems: "center",
+        marginLeft: rpx(16),
     },
     container: {
         width: "100%",

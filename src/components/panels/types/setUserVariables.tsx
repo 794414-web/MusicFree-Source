@@ -1,5 +1,5 @@
 import React, { useRef, useState } from "react";
-import { KeyboardAvoidingView, StyleSheet, View, TextInput } from "react-native";
+import { KeyboardAvoidingView, StyleSheet, View, TextInput, TouchableOpacity } from "react-native";
 import rpx, { vmax } from "@/utils/rpx";
 import useColors from "@/hooks/useColors";
 import usePaste from "@/hooks/usePaste";
@@ -11,7 +11,6 @@ import PanelBase from "../base/panelBase";
 import { hidePanel } from "../usePanel";
 import ListItem from "@/components/base/listItem";
 import globalStyle from "@/constants/globalStyle";
-import PanelHeader from "../base/panelHeader";
 
 interface IUserVariablesProps {
     title?: string;
@@ -39,16 +38,30 @@ export default function SetUserVariables(props: IUserVariablesProps) {
             keyboardAvoidBehavior='none'
             renderBody={() => (
                 <>
-                    <PanelHeader
-                        title={title ?? "设置用户变量"}
-                        onCancel={() => {
-                            onCancel?.();
-                            hidePanel();
-                        }}
-                        onOk={async () => {
-                            onOk(resultRef.current, hidePanel);
-                        }}
-                    />
+                    <View
+                        style={[
+                            styles.titleBar,
+                            { backgroundColor: colors.backdrop },
+                        ]}>
+                        <TouchableOpacity
+                            style={styles.closeBtn}
+                            onPress={() => {
+                                onCancel?.();
+                                hidePanel();
+                            }}>
+                            <ThemeText fontWeight="medium">
+                                取消
+                            </ThemeText>
+                        </TouchableOpacity>
+                        <ThemeText
+                            fontWeight="bold"
+                            fontSize="title"
+                            numberOfLines={1}
+                            style={styles.title}>
+                            {title ?? "设置用户变量"}
+                        </ThemeText>
+                        <View style={styles.closeBtn} />
+                    </View>
                     <KeyboardAvoidingView
                         behavior="padding"
                         style={globalStyle.flex1}>
@@ -107,6 +120,37 @@ export default function SetUserVariables(props: IUserVariablesProps) {
                             ))}
                         </ScrollView>
                     </KeyboardAvoidingView>
+                    <View
+                        style={[
+                            styles.bottomBar,
+                            { backgroundColor: colors.backdrop },
+                        ]}>
+                        <TouchableOpacity
+                            style={[
+                                styles.bottomBtn,
+                                { borderColor: colors.divider },
+                            ]}
+                            onPress={() => {
+                                onCancel?.();
+                                hidePanel();
+                            }}>
+                            <ThemeText fontWeight="medium">
+                                取消
+                            </ThemeText>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                            style={[
+                                styles.bottomBtn,
+                                { backgroundColor: colors.primary },
+                            ]}
+                            onPress={() => onOk(resultRef.current, hidePanel)}>
+                            <ThemeText
+                                fontWeight="medium"
+                                color="#fff">
+                                确认
+                            </ThemeText>
+                        </TouchableOpacity>
+                    </View>
                 </>
             )}
         />
@@ -114,6 +158,24 @@ export default function SetUserVariables(props: IUserVariablesProps) {
 }
 
 const styles = StyleSheet.create({
+    titleBar: {
+        width: "100%",
+        height: rpx(100),
+        flexDirection: "row",
+        alignItems: "center",
+        paddingHorizontal: rpx(24),
+        borderBottomWidth: StyleSheet.hairlineWidth,
+        borderBottomColor: "rgba(150,150,150,0.2)",
+    },
+    closeBtn: {
+        width: rpx(120),
+        height: "100%",
+        justifyContent: "center",
+    },
+    title: {
+        flex: 1,
+        textAlign: "center",
+    },
     listItem: {
         justifyContent: "space-between",
     },
@@ -135,5 +197,23 @@ const styles = StyleSheet.create({
         paddingHorizontal: rpx(14),
         borderRadius: rpx(8),
         fontSize: rpx(28),
+    },
+    bottomBar: {
+        flexShrink: 0,
+        flexDirection: "row",
+        borderTopWidth: StyleSheet.hairlineWidth,
+        borderTopColor: "rgba(150,150,150,0.2)",
+        paddingHorizontal: rpx(24),
+        paddingVertical: rpx(16),
+        paddingBottom: rpx(48),
+    },
+    bottomBtn: {
+        flex: 1,
+        height: rpx(88),
+        borderRadius: rpx(44),
+        alignItems: "center",
+        justifyContent: "center",
+        borderWidth: 1,
+        marginHorizontal: rpx(12),
     },
 });

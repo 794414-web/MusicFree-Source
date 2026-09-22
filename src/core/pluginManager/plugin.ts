@@ -86,6 +86,23 @@ const _consoleBind = function (
         fn(...args);
         devLog(method, ...args);
     }
+    // warn / error 额外写入错误日志文件，便于在「日志」菜单里定位插件运行时的诊断信息
+    // （例如 GD 歌单导入失败时的多路径诊断输出）。
+    if (method === "warn" || method === "error") {
+        try {
+            const text = args
+                .map((a) => {
+                    if (typeof a === "string") return a;
+                    if (a instanceof Error) return a.stack || a.message || String(a);
+                    if (a && typeof a === "object") {
+                        try { return JSON.stringify(a); } catch { return String(a); }
+                    }
+                    return String(a);
+                })
+                .join(" ");
+            errorLog(`[插件]${method}`, text);
+        } catch {}
+    }
 };
 
 const _console = {

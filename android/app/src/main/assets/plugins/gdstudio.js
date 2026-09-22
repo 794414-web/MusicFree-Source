@@ -72,13 +72,34 @@ function sleep(ms) {
     return new Promise(function (resolve) { setTimeout(resolve, ms); });
 }
 
+// 硬超时保护：QQ 官方接口在部分 Android 环境（模拟器/真机）会挂起数十分钟不返回，
+// 用 Promise.race 实现「业务 Promise + setTimeout reject」竞速，超时即抛错，避免回退路径永远卡住。
+function timeoutRace(promise, ms, label) {
+    return Promise.race([
+        promise,
+        new Promise(function (_, reject) {
+            setTimeout(function () { reject(new Error(label || "timeout")); }, ms);
+        }),
+    ]);
+}
+
 function requestGD(params, retryCount, hostIndex) {
     var attempt = retryCount || 0;
     var host = hostIndex || 0;
     return axios
         .get(GD_API_HOSTS[host], { params: params, timeout: REQUEST_TIMEOUT, headers: GD_REQUEST_HEADERS })
         .then(function (res) {
-            return res.data;
+            var data = res.data;
+            // 诊断：GD 在部分环境下会被 Cloudflare 挡，返回 HTML 而非 JSON。
+            // 显式检测并抛错，让上层走备用域名而不是把 HTML 当成空数组。
+            if (typeof data === "string") {
+                var trimmed = data.slice(0, 200);
+                if (/<!doctype|<html/i.test(trimmed)) {
+                    throw new Error("GD returned HTML (cloudflare?) host=" + host + " head=" + trimmed.slice(0, 100).replace(/\s+/g, " "));
+                }
+                try { data = JSON.parse(data); } catch (e) {}
+            }
+            return data;
         })
         .catch(function (error) {
             // 限流或临时服务错误：先在当前域名按指数退避重试
@@ -380,22 +401,30 @@ function searchOneSource(source, query, page) {
 // 支持常见国内平台：网易云(默认)、QQ音乐、酷狗、酷我、咪咕，均可映射到 GD 聚合音源
 function parsePlaylistInput(text) {
     var s = String(text || "").trim();
-    if (!s) return null;
+    if (!s) {
+        diagQQ("parsePlaylistInput empty input");
+        return null;
+    }
     var source = null;
     var id = null;
     // 网易云：兼容 PC 分享(music.163.com/#/playlist?id=)、移动端(y.music.163.com/m/playlist?id=)、
     // 简洁链接(music.163.com/playlist?id= 或 /playlist/xxx)、纯数字ID
     var m = s.match(/(?:music\.163\.com|y\.music\.163\.com)[^#?\s]*(?:#\/)?playlist(?:\?[^\s]*?id=|\/)(\d+)/i);
     if (m) { source = "netease"; id = m[1]; }
-    // QQ音乐：y.qq.com .../playlist/xxx 或 .../playlist?id=xxx
+    // QQ音乐：y.qq.com .../playlist/xxx 或 .../playlist?id=xxx（兼容 i.y.qq.com / i2.y.qq.com 等子域）
     if (!source) {
-        var q = s.match(/y\.qq\.com[^\s]*?playlist(?:\/|(?:\?[^\s]*?id=))(\d+)/i);
+        var q = s.match(/(?:i\d*\.y\.qq\.com|y\.qq\.com)[^\s]*?playlist(?:\/|(?:\?[^\s]*?id=))(\d+)/i);
         if (q) { source = "tencent"; id = q[1]; }
     }
-    // QQ音乐分享页：i.y.qq.com/n2/m/share/details/taoge.html? ... id=xxx
+    // QQ音乐分享页：i.y.qq.com / i2.y.qq.com 等 /n2/m/share/... id=xxx 或 /other/pages/details/playlist.html?id=xxx
     if (!source) {
-        var q2 = s.match(/i\.y\.qq\.com[^\s]*?id=(\d+)/i);
+        var q2 = s.match(/i\d*\.y\.qq\.com[^\s]*?id=(\d+)/i);
         if (q2) { source = "tencent"; id = q2[1]; }
+    }
+    // QQ音乐 PC 分享：portal/playlist.html?list=xxx 或 ?g_id=xxx 或 ?t=xxx
+    if (!source) {
+        var q3 = s.match(/y\.qq\.com[^\s]*?(?:list|g_id|t)=(\d+)/i);
+        if (q3) { source = "tencent"; id = q3[1]; }
     }
     // 酷狗：kugou.com/yy/special/single/{id}
     if (!source) {
@@ -414,7 +443,11 @@ function parsePlaylistInput(text) {
     }
     // 纯数字ID默认网易云歌单
     if (!source && /^\d+$/.test(s)) { source = "netease"; id = s; }
-    if (!source || !id) return null;
+    if (!source || !id) {
+        diagQQ("parsePlaylistInput NO MATCH input=" + s.slice(0, 120));
+        return null;
+    }
+    diagQQ("parsePlaylistInput OK source=" + source + " id=" + id + " input=" + s.slice(0, 80));
     return { source: source, id: id };
 }
 
@@ -444,7 +477,6 @@ function formatPlaylistTrack(track, source) {
         _gdLyricId: track.lyric_id || track.lyricId || trackId,
     };
 }
-
 // ===== QQ 歌单导入 =====
 // GD 聚合接口不支持 tencent 源（types=playlist/url/lyric 对 source=tencent 均返回 400），
 // 因此 QQ 歌单直接调用 QQ 官方公开接口获取曲目元数据（歌名/歌手/专辑/时长/封面）。
@@ -489,44 +521,99 @@ function buildQQDissBody(disstid, songBegin, songNum) {
 function parseQQResponse(raw) {
     var data = raw;
     if (typeof data === "string") {
-        try { data = JSON.parse(data); } catch (e) { return { songlist: [], songnum: 0 }; }
+        try { data = JSON.parse(data); } catch (e) { return { songlist: [], songnum: 0, error: "not_json" }; }
     }
     if (!data || !data.req || data.req.code !== 0) {
-        return { songlist: [], songnum: 0 };
+        return {
+            songlist: [],
+            songnum: 0,
+            error: (!data ? "no_body" : "code=" + data.code + ",req=" + (!data.req ? "missing" : data.req.code)),
+        };
     }
     var dirinfo = (data.req.data && data.req.data.dirinfo) || {};
     var songlist = (data.req.data && data.req.data.songlist) || [];
-    return { songlist: songlist, songnum: dirinfo.songnum || songlist.length };
+    return { songlist: songlist, songnum: dirinfo.songnum || songlist.length, error: "" };
 }
 
-function fetchQQPlaylistPage(disstid, songBegin, songNum) {
-    var body = buildQQDissBody(disstid, songBegin, songNum);
-    // 主通道：GET + 手动编码 URL（?data=），只带 UA。经真机验证，RN(OkHttp)
-    // 网络栈对「POST 发 JSON 字符串 body + Content-Type」处理异常会导致空列表，
-    // 而 GET 手动拼 URL 稳定返回。失败或空结果时降级 POST 兜底。
-    return fetchQQPlaylistPageViaGet(body)
-        .then(function (result) {
-            if (result.songlist.length || result.songnum > 0) return result;
-            return fetchQQPlaylistPageViaPost(body);
-        })
-        .catch(function () { return fetchQQPlaylistPageViaPost(body); });
+// 诊断日志：写到 console，会在 logcat 的 ReactNativeJS 通道显示。
+// 用于让用户端能看清到底卡在哪个环节（URL 解析 / GET / POST / 空结果）。
+function diagQQ(msg) {
+    // 用 warn 而非 log：生产模式 babel 只剥离 console.log，
+    // warn 会保留到 logcat(ReactNativeJS)，便于用户端看到诊断信息。
+    try { console.warn("[GDS-PLAYLIST] " + msg); } catch (e) {}
 }
 
-function fetchQQPlaylistPageViaGet(body) {
-    // 手动 encodeURIComponent 拼 URL，不依赖 axios 的 params 序列化，
-    // 规避 RN 环境下参数编码差异。
+// POST 通道请求体：QQ 接口对 GET ?data= 编码在某些环境会被拒（code=500001），
+// 而 POST JSON body 在模拟器/真机/宿主机全部稳定返回，因此 POST 作为主通道。
+// 手动字符串化 body + 明确 Content-Type，规避 RN(OkHttp) 自动序列化差异。
+function fetchQQPlaylistPageViaPost(body, headers) {
+    var opts = { headers: headers || QQ_REQUEST_HEADERS, timeout: REQUEST_TIMEOUT };
+    return axios
+        .post(QQ_PLAYLIST_API, body, opts)
+        .then(function (res) { return parseQQResponse(res.data); })
+        .catch(function (e) {
+            var status = (e && e.response && e.response.status) || "-";
+            var respText = (e && e.response && e.response.data) || "";
+            if (typeof respText === "object") respText = JSON.stringify(respText);
+            respText = String(respText).slice(0, 300);
+            return {
+                songlist: [],
+                songnum: 0,
+                error: "post_err:" + status + ":" + respText,
+            };
+        });
+}
+
+function fetchQQPlaylistPageViaGet(body, headers) {
     var url = QQ_PLAYLIST_API + "?data=" + encodeURIComponent(body);
     return axios
-        .get(url, { headers: QQ_GET_HEADERS, timeout: REQUEST_TIMEOUT })
+        .get(url, { headers: headers || QQ_GET_HEADERS, timeout: REQUEST_TIMEOUT })
         .then(function (res) { return parseQQResponse(res.data); })
-        .catch(function () { return { songlist: [], songnum: 0 }; });
+        .catch(function (e) {
+            var status = (e && e.response && e.response.status) || "-";
+            var respText = (e && e.response && e.response.data) || "";
+            if (typeof respText === "object") respText = JSON.stringify(respText);
+            return {
+                songlist: [],
+                songnum: 0,
+                error: "get_err:" + status + ":" + String(respText).slice(0, 300),
+            };
+        });
 }
 
-function fetchQQPlaylistPageViaPost(body) {
-    return axios
-        .post(QQ_PLAYLIST_API, body, { headers: QQ_REQUEST_HEADERS, timeout: REQUEST_TIMEOUT })
-        .then(function (res) { return parseQQResponse(res.data); })
-        .catch(function () { return { songlist: [], songnum: 0 }; });
+// 主流程：POST 优先（稳定），GET 兜底（部分环境 POST 被拦），再尝试备用 UA 重试。
+// 任何一步拿到非空结果即返回；全失败时返回最后一次的错误信息用于诊断。
+function fetchQQPlaylistPage(disstid, songBegin, songNum) {
+    var body = buildQQDissBody(disstid, songBegin, songNum);
+    diagQQ("req disstid=" + disstid + " begin=" + songBegin + " num=" + songNum);
+    return fetchQQPlaylistPageViaPost(body)
+        .then(function (r1) {
+            diagQQ("POST  " + (r1.error || ("ok list=" + r1.songlist.length + " num=" + r1.songnum)));
+            if (r1.songlist.length || r1.songnum > 0) return r1;
+            return fetchQQPlaylistPageViaGet(body).then(function (r2) {
+                diagQQ("GET   " + (r2.error || ("ok list=" + r2.songlist.length + " num=" + r2.songnum)));
+                if (r2.songlist.length || r2.songnum > 0) return r2;
+                // 兜底：换 Android 移动端 UA + Referer 重试 POST
+                var androidHeaders = Object.assign({}, QQ_REQUEST_HEADERS, {
+                    "User-Agent":
+                        "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
+                });
+                return fetchQQPlaylistPageViaPost(body, androidHeaders).then(function (r3) {
+                    diagQQ("POST2 " + (r3.error || ("ok list=" + r3.songlist.length + " num=" + r3.songnum)));
+                    if (r3.songlist.length || r3.songnum > 0) return r3;
+                    // 再试 GET + Android UA
+                    var androidGetHeaders = Object.assign({}, QQ_GET_HEADERS, {
+                        "User-Agent":
+                            "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
+                    });
+                    return fetchQQPlaylistPageViaGet(body, androidGetHeaders).then(function (r4) {
+                        diagQQ("GET2  " + (r4.error || ("ok list=" + r4.songlist.length + " num=" + r4.songnum)));
+                        if (r4.songlist.length || r4.songnum > 0) return r4;
+                        return r1;
+                    });
+                });
+            });
+        });
 }
 
 function formatQQTrack(track) {
@@ -566,9 +653,12 @@ function importQQPlaylist(id) {
     var songBegin = 0;
     var songNum = 1000;
     var total = -1;
+    diagQQ("importQQPlaylist start id=" + disstid);
     function nextPage() {
         return fetchQQPlaylistPage(disstid, songBegin, songNum).then(function (res) {
             if (total < 0) total = res.songnum || 0;
+            diagQQ("page begin=" + songBegin + " got=" + (res.songlist ? res.songlist.length : 0)
+                + " total=" + total + " err=" + (res.error || "-"));
             if (!res.songlist.length) return tracks;
             res.songlist.forEach(function (track) {
                 var formatted = formatQQTrack(track);
@@ -583,8 +673,87 @@ function importQQPlaylist(id) {
         });
     }
     return nextPage()
-        .then(function (result) { return result.length ? result : null; })
-        .catch(function () { return tracks.length ? tracks : null; });
+        .then(function (result) {
+            diagQQ("importQQPlaylist done tracks=" + (result ? result.length : 0));
+            return result.length ? result : null;
+        })
+        .catch(function (e) {
+            diagQQ("importQQPlaylist ERR " + (e && e.message || e));
+            return tracks.length ? tracks : null;
+        });
+}
+
+// 通用 GD 聚合接口拉取歌单（非 QQ 歌单默认路径；QQ 官方接口失败时作为回退）
+// 分页遍历 GD 的 playlist 接口，去重后返回曲目列表。空结果返回 null。
+function importPlaylistViaGD(source, id) {
+    var page = 1;
+    var count = 99;
+    var maxPages = 20;
+    var tracks = [];
+    var seenTracks = {};
+    var seenPages = {};
+    diagQQ("importPlaylistViaGD start source=" + source + " id=" + id);
+    function nextPage() {
+        return requestGD({
+            types: "playlist",
+            source: source,
+            id: id,
+            count: count,
+            pages: page,
+        }).then(function (data) {
+            var pageTracks = [];
+            if (data && data.playlist && Array.isArray(data.playlist.tracks)) {
+                pageTracks = data.playlist.tracks;
+            } else if (data && Array.isArray(data.tracks)) {
+                pageTracks = data.tracks;
+            } else if (Array.isArray(data)) {
+                pageTracks = data;
+            } else if (data && typeof data === "object") {
+                // 诊断：GD 返回了对象但没有 tracks 字段，把键打印出来便于排查
+                diagQQ("GD response shape unexpected: keys=" + Object.keys(data).slice(0, 10).join(","));
+            }
+            if (pageTracks.length) {
+                var sample = pageTracks[0];
+                var sampleKeys = sample && typeof sample === "object" ? Object.keys(sample).slice(0, 10).join(",") : String(sample).slice(0, 60);
+                diagQQ("page=" + page + " got=" + pageTracks.length + " sampleKeys=" + sampleKeys);
+            }
+            if (!pageTracks.length) return tracks;
+            var formattedCount = 0;
+            var pageKeys = [];
+            pageTracks.forEach(function (track) {
+                var formatted = formatPlaylistTrack(track, source);
+                if (!formatted) return;
+                formattedCount += 1;
+                var key = formatted._gdSource + ":" + formatted._gdId;
+                pageKeys.push(key);
+                if (seenTracks[key]) return;
+                seenTracks[key] = true;
+                tracks.push(formatted);
+            });
+            if (formattedCount === 0 && pageTracks.length > 0) {
+                // 一条都没格式化成功：打印首条原始 track 字段，便于排查格式差异
+                var raw = pageTracks[0];
+                diagQQ("FORMAT ALL NULL! raw[0]=" + JSON.stringify(raw).slice(0, 300));
+            }
+            var pageSignature = pageKeys.join("|");
+            if (!pageSignature || seenPages[pageSignature]) return tracks;
+            seenPages[pageSignature] = true;
+            var total = data && data.playlist && Number(data.playlist.trackCount || data.playlist.total || 0);
+            var hasMore = total > 0 ? tracks.length < total : pageTracks.length >= count;
+            if (hasMore && page < maxPages) {
+                page += 1;
+                return nextPage();
+            }
+            return tracks;
+        });
+    }
+    return nextPage().then(function (result) {
+        diagQQ("importPlaylistViaGD done source=" + source + " tracks=" + (result ? result.length : 0));
+        return result.length ? result : null;
+    }).catch(function (e) {
+        diagQQ("importPlaylistViaGD ERR source=" + source + " " + (e && e.message || e));
+        return tracks.length ? tracks : null;
+    });
 }
 
 // 源记忆：曲目ID -> 上次成功播放的源
@@ -945,58 +1114,33 @@ module.exports = {
         var parsed = parsePlaylistInput(urlLike);
         if (!parsed) return Promise.resolve(null);
         if (parsed.source === "tencent") {
-            return importQQPlaylist(parsed.id);
-        }
-        var page = 1;
-        var count = 99;
-        var maxPages = 20;
-        var tracks = [];
-        var seenTracks = {};
-        var seenPages = {};
-        function nextPage() {
-            return requestGD({
-                types: "playlist",
-                source: parsed.source,
-                id: parsed.id,
-                count: count,
-                pages: page,
-            }).then(function (data) {
-                var pageTracks = [];
-                if (data && data.playlist && Array.isArray(data.playlist.tracks)) {
-                    pageTracks = data.playlist.tracks;
-                } else if (data && Array.isArray(data.tracks)) {
-                    pageTracks = data.tracks;
-                } else if (Array.isArray(data)) {
-                    pageTracks = data;
-                }
-                if (!pageTracks.length) return tracks;
-                var pageKeys = [];
-                pageTracks.forEach(function (track) {
-                    var formatted = formatPlaylistTrack(track, parsed.source);
-                    if (!formatted) return;
-                    var key = formatted._gdSource + ":" + formatted._gdId;
-                    pageKeys.push(key);
-                    if (seenTracks[key]) return;
-                    seenTracks[key] = true;
-                    tracks.push(formatted);
+            // QQ 歌单双通道：
+            //   1) 优先走 GD 聚合接口（稳定、快速，返回 QQ 曲目元数据）；
+            //   2) GD 无结果时回退 QQ 官方接口（部分环境下 GD 会被 Cloudflare 挡，
+            //      官方接口可补上）。QQ 官方接口在部分 Android 环境（模拟器/真机）
+            //      会挂起数十分钟不返回，故给回退路径加 60s 硬超时兜底，避免卡死。
+            return importPlaylistViaGD("tencent", parsed.id).then(function (result) {
+                if (result && result.length > 0) return result;
+                diagQQ("GD聚合接口无结果，回退QQ官方接口 id=" + parsed.id);
+                return timeoutRace(importQQPlaylist(parsed.id), 60000, "QQ官方接口超时").then(function (r2) {
+                    if (r2 && r2.length > 0) return r2;
+                    diagQQ("两条路径均无结果 id=" + parsed.id);
+                    return null;
+                }).catch(function (e2) {
+                    diagQQ("两条路径均失败 " + (e2 && e2.message || e2));
+                    return null;
                 });
-                var pageSignature = pageKeys.join("|");
-                if (!pageSignature || seenPages[pageSignature]) return tracks;
-                seenPages[pageSignature] = true;
-                var total = data && data.playlist && Number(data.playlist.trackCount || data.playlist.total || 0);
-                var hasMore = total > 0 ? tracks.length < total : pageTracks.length >= count;
-                if (hasMore && page < maxPages) {
-                    page += 1;
-                    return nextPage();
-                }
-                return tracks;
+            }).catch(function (e) {
+                diagQQ("GD聚合接口异常 " + (e && e.message || e) + " 回退QQ官方");
+                return timeoutRace(importQQPlaylist(parsed.id), 60000, "QQ官方接口超时").then(function (r2) {
+                    return (r2 && r2.length > 0) ? r2 : null;
+                }).catch(function (e2) {
+                    diagQQ("两条路径均失败 " + (e2 && e2.message || e2));
+                    return null;
+                });
             });
         }
-        return nextPage().then(function (result) {
-            return result.length ? result : null;
-        }).catch(function () {
-            return tracks.length ? tracks : null;
-        });
+        return importPlaylistViaGD(parsed.source, parsed.id);
     },
 
     // 获取榜单：返回网易云内置榜单分组，封面在点开详情时由 getTopListDetail 补充

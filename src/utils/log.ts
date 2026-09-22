@@ -98,11 +98,23 @@ export async function getErrorLogContent() {
 
 export function errorLog(desc: string, message: any) {
     if (Config.getConfig("debug.errorLog")) {
+        // 序列化 message 为可读字符串：数组用 join，对象 JSON.stringify，
+        // 保证写盘的日志里能看到实际内容，而不是空 {}。
+        let safeMessage: any = message;
+        try {
+            if (Array.isArray(message)) {
+                safeMessage = message.join(" | ");
+            } else if (message && typeof message === "object") {
+                safeMessage = JSON.stringify(message);
+            } else if (message instanceof Error) {
+                safeMessage = (message.stack || message.message || String(message));
+            }
+        } catch {}
         log.error({
             desc,
-            message,
+            message: safeMessage,
         });
-        trace(desc, message, "error");
+        trace(desc, safeMessage, "error");
     }
 }
 

@@ -1,18 +1,19 @@
 {
-  "version": "2.1.5",
+  "version": "2.1.7",
   "changeLog": [
-    "## v2.1.5 QQ 歌单导入真机修复",
+    "## v2.1.7 车机 UI 适配：确认按钮下移",
     "",
-    "- 修复 QQ 歌单在真机上导入报「链接有误或目标歌单为空」的问题。",
-    "- QQ 歌单拉取改为 GET 优先（手动编码 URL、仅带 UA），规避 RN 网络栈对 POST JSON body 的处理差异；POST 降为兜底通道。",
-    "- GD 插件升级至 1.7.0。"
+    "- 修复车机屏幕右上角被遮挡导致「确认」按钮点不到的问题。",
+    "- 新建歌单、关联歌词、颜色选择：确认按钮内联到粘贴/输入框旁，不再放右上角。",
+    "- 自定义变量、歌词偏移：确认按钮移到底部操作栏。",
+    "- 所有面板顶部右上角不再放置任何需要点击的按钮。"
   ],
   "download": [
-    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.1.5/MusicFree-2.1.5-universal.apk",
-    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.5/MusicFree-2.1.5-universal.apk",
-    "https://ghproxy.net/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.5/MusicFree-2.1.5-universal.apk",
-    "https://ghps.cc/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.5/MusicFree-2.1.5-universal.apk",
-    "https://mirror.ghproxy.com/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.5/MusicFree-2.1.5-universal.apk",
-    "https://kkgithub.com/794414-web/MusicFree-Source/releases/download/v2.1.5/MusicFree-2.1.5-universal.apk"
+    "https://gitee.com/ken794414/MusicFree-Source/releases/download/v2.1.7/MusicFree-2.1.7-universal.apk",
+    "https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.7/MusicFree-2.1.7-universal.apk",
+    "https://ghproxy.net/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.7/MusicFree-2.1.7-universal.apk",
+    "https://ghps.cc/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.7/MusicFree-2.1.7-universal.apk",
+    "https://mirror.ghproxy.com/https://github.com/794414-web/MusicFree-Source/releases/download/v2.1.7/MusicFree-2.1.7-universal.apk",
+    "https://kkgithub.com/794414-web/MusicFree-Source/releases/download/v2.1.7/MusicFree-2.1.7-universal.apk"
   ]
 }
